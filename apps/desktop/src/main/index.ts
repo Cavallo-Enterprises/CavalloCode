@@ -2,18 +2,38 @@ import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { fork, ChildProcess } from 'child_process'
+
+let extensionHostProcess: ChildProcess | null = null;
+
+function startExtensionHost() {
+  const hostPath = join(__dirname, '../../packages/extension-host/src/host.ts');
+  console.log(`Starting extension host from ${hostPath}`);
+  
+  // In a real build, we would fork the compiled .js file
+  extensionHostProcess = fork(hostPath, ['--run-worker'], {
+    // env: process.env,
+    // execArgv: ['--loader', 'ts-node/esm'] // If using ts-node
+  });
+
+  extensionHostProcess.on('message', (msg) => {
+    console.log('Message from Extension Host:', msg);
+  });
+}
 
 function createWindow(): void {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
+    width: 1024,
+    height: 768,
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: false,
+      contextIsolation: true,
+      nodeIntegration: false
     }
   })
 
@@ -35,40 +55,61 @@ function createWindow(): void {
   }
 }
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
-  // Set app user model id for windows
-  electronApp.setAppUserModelId('com.electron')
+  electronApp.setAppUserModelId('com.cavallocode')
 
-  // Default open or close DevTools by F12 in development
-  // and ignore CommandOrControl + R in production.
-  // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // IPC test
+  // ── IPC HANDLERS ──────────────────────────────────────────────────────────
+
+  // List available serial ports (stub; replace with node-serialport in real build)
+  ipcMain.handle('serial:list', async () => {
+    // Real impl: const { SerialPort } = await import('serialport');
+    // return await SerialPort.list();
+    return [
+      { path: 'COM3', manufacturer: 'Arduino LLC' },
+      { path: 'COM4', manufacturer: 'Silicon Labs (CP2102)' },
+    ];
+  });
+
+  ipcMain.handle('serial:connect', async (_event, port: string, baud: number) => {
+    console.log(`[MainProcess] Connecting to ${port} at ${baud}`);
+    // Spawn SerialPort connection here and pipe data back via mainWindow.webContents.send('serial:data', chunk)
+    return { success: true };
+  });
+
+  ipcMain.handle('serial:disconnect', async () => {
+    console.log('[MainProcess] Disconnecting serial');
+    return { success: true };
+  });
+
+  ipcMain.handle('serial:send', async (_event, data: string) => {
+    console.log('[MainProcess] Serial TX:', data);
+    return { success: true };
+  });
+
+  ipcMain.handle('ext:list', async () => {
+    return [
+      { id: 'builtin-esp32', name: 'ESP32 Support', version: '1.0.0' },
+      { id: 'builtin-arduino', name: 'Arduino Support', version: '1.0.0' },
+      { id: 'builtin-raspberrypi', name: 'Raspberry Pi Support', version: '1.0.0' },
+    ];
+  });
+
   ipcMain.on('ping', () => console.log('pong'))
 
   createWindow()
 
   app.on('activate', function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
 })
 
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and require them here.

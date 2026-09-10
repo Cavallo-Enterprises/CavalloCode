@@ -1,14 +1,16 @@
 {
-  "name": "CavalloCode",
+  "name": "cavallocode",
   "version": "1.0.0",
-  "description": "",
+  "description": "CavalloCode - A VS Code-Architecture Modular Hardware IDE",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "pnpm --filter desktop dev",
+    "build": "pnpm --filter desktop build",
+    "test": "echo \"No tests specified\""
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": ["ide", "embedded", "hardware", "arduino", "esp32", "electron"],
+  "author": "Cavallo-Enterprises",
+  "license": "MIT",
   "devEngines": {
     "packageManager": {
       "name": "pnpm",
@@ -17,5 +19,14 @@
     }
   },
   "packageManager": "pnpm@12.3.4",
-  "type": "module"
+  "type": "module",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild",
+      "@serialport/bindings-cpp",
+      "electron-winstaller"
+    ]
+  }
 }
+

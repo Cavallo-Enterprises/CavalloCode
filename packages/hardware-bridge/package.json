@@ -9,5 +9,9 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "execa": "^10.0.1",
+    "serialport": "^13.0.0"
+  }
 }

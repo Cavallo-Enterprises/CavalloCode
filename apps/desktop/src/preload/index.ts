@@ -1,12 +1,26 @@
-import { contextBridge } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
-// Custom APIs for renderer
-const api = {}
+// Safe CavalloCode APIs exposed to the renderer process
+const api = {
+  // Serial port operations (IPC calls to main process)
+  listSerialPorts: () => ipcRenderer.invoke('serial:list'),
+  connectSerial: (port: string, baud: number) => ipcRenderer.invoke('serial:connect', port, baud),
+  disconnectSerial: () => ipcRenderer.invoke('serial:disconnect'),
+  sendSerialData: (data: string) => ipcRenderer.invoke('serial:send', data),
 
-// Use `contextBridge` APIs to expose Electron APIs to
-// renderer only if context isolation is enabled, otherwise
-// just add to the DOM global.
+  // Subscribe to incoming serial data from main
+  onSerialData: (callback: (data: string) => void) => {
+    ipcRenderer.on('serial:data', (_event, data) => callback(data));
+  },
+  removeSerialDataListener: () => {
+    ipcRenderer.removeAllListeners('serial:data');
+  },
+
+  // Extension host
+  getInstalledExtensions: () => ipcRenderer.invoke('ext:list'),
+}
+
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)
@@ -15,8 +29,9 @@ if (process.contextIsolated) {
     console.error(error)
   }
 } else {
-  // @ts-ignore (define in dts)
+  // @ts-ignore
   window.electron = electronAPI
-  // @ts-ignore (define in dts)
+  // @ts-ignore
   window.api = api
 }
+

@@ -1,35 +1,54 @@
-import Versions from './components/Versions'
-import electronLogo from './assets/electron.svg'
+import React, { useState } from 'react';
+import { Layout, CavalloMonacoEditor } from 'core-ui/src/index';
+import { WebGLTerminal } from 'terminal/src/index';
 
-function App(): React.JSX.Element {
-  const ipcHandle = (): void => window.electron.ipcRenderer.send('ping')
+type Theme = 'vs-dark' | 'vs' | 'hc-black';
+
+function App(): JSX.Element {
+  const [theme, setTheme] = useState<Theme>('vs-dark');
+  const [terminalHeight, setTerminalHeight] = useState(220);
 
   return (
-    <>
-      <img alt="logo" className="logo" src={electronLogo} />
-      <div className="creator">Powered by electron-vite</div>
-      <div className="text">
-        Build an Electron app with <span className="react">React</span>
-        &nbsp;and <span className="ts">TypeScript</span>
-      </div>
-      <p className="tip">
-        Please try pressing <code>F12</code> to open the devTool
-      </p>
-      <div className="actions">
-        <div className="action">
-          <a href="https://electron-vite.org/" target="_blank" rel="noreferrer">
-            Documentation
-          </a>
+    <Layout theme={theme} onThemeChange={setTheme}>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+        {/* Monaco Editor — takes all remaining space */}
+        <div style={{ flex: 1, overflow: 'hidden' }}>
+          <CavalloMonacoEditor theme={theme} onThemeChange={setTheme} />
         </div>
-        <div className="action">
-          <a target="_blank" rel="noreferrer" onClick={ipcHandle}>
-            Send IPC
-          </a>
+
+        {/* Resize handle */}
+        <div
+          style={{
+            height: 4,
+            background: '#007acc',
+            cursor: 'ns-resize',
+            flexShrink: 0,
+            opacity: 0.6,
+          }}
+          onMouseDown={(e) => {
+            const startY = e.clientY;
+            const startH = terminalHeight;
+            const onMove = (ev: MouseEvent) => {
+              const delta = startY - ev.clientY;
+              setTerminalHeight(Math.max(80, Math.min(600, startH + delta)));
+            };
+            const onUp = () => {
+              window.removeEventListener('mousemove', onMove);
+              window.removeEventListener('mouseup', onUp);
+            };
+            window.addEventListener('mousemove', onMove);
+            window.addEventListener('mouseup', onUp);
+          }}
+        />
+
+        {/* WebGL Serial Terminal — resizable */}
+        <div style={{ height: terminalHeight, flexShrink: 0, borderTop: '1px solid #3c3c3c' }}>
+          <WebGLTerminal />
         </div>
       </div>
-      <Versions></Versions>
-    </>
-  )
+    </Layout>
+  );
 }
 
-export default App
+export default App;
+
