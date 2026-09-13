@@ -1,4 +1,5 @@
-<img width="1340" height="592" alt="image" src="https://github.com/user-attachments/assets/1390c6a4-e04c-4bea-801b-24a1a36f1cf0" />
+<img width="2000" height="2000" alt="cavallocode" src="https://github.com/user-attachments/assets/d5faa12c-50b2-4307-83ed-e5012f54263f" />
+
 
 
 # CavalloCode
