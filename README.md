@@ -387,10 +387,4 @@ CavalloCode is released under the MIT License.
 
 See [LICENSE](LICENSE) for the complete license text.
 
-## Project
 
-CavalloCode is maintained by Cavallo Enterprises.
-
-Repository:
-
-https://github.com/Cavallo-Enterprises/CavalloCode
