@@ -19,14 +19,7 @@
     }
   },
   "packageManager": "pnpm@12.3.4",
-  "type": "module",
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "electron",
-      "esbuild",
-      "@serialport/bindings-cpp",
-      "electron-winstaller"
-    ]
-  }
+  "type": "module"
 }
+
 

@@ -1,5 +1,6 @@
-appId: com.electron.app
-productName: desktop
+appId: com.cavallocode.app
+productName: CavalloCode
+copyright: Copyright © 2026 Cavallo-Enterprises
 directories:
   buildResources: build
 files:
@@ -12,12 +13,14 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: desktop
+  executableName: CavalloCode
+  icon: resources/icon.png
 nsis:
-  artifactName: ${name}-${version}-setup.${ext}
-  shortcutName: ${productName}
-  uninstallDisplayName: ${productName}
+  artifactName: CavalloCode-${version}-setup.${ext}
+  shortcutName: CavalloCode
+  uninstallDisplayName: CavalloCode
   createDesktopShortcut: always
+
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:

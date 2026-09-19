@@ -42,11 +42,5 @@
     "prettier": "^3.7.4",
     "typescript": "^5.9.3",
     "vite": "^7.2.6"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "electron",
-      "esbuild"
-    ]
   }
 }
