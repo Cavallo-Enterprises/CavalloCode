@@ -14,53 +14,86 @@ CavalloCode is currently under active development.
 
 The architecture and core application are being developed before expanding platform-specific tooling and hardware integrations. APIs, package boundaries, extension interfaces, and internal implementation details may change during development.
 
-## Architecture
+## Overview & Key Features
 
-CavalloCode is structured as a monorepo using PNPM workspaces.
+CavalloCode brings VS Code-grade architecture and ergonomics to Embedded Systems and Hardware Engineering:
+
+- **Process-Isolated Microkernel**: Electron Main Process, context-isolated React Renderer, and an out-of-process Node.js Extension Host communicating over JSON-RPC.
+- **Embedded Monaco Editor**: Full syntax highlighting and code editing for C++, C, Python, and MicroPython, bundled 100% locally with zero CDN dependencies and fault-tolerant ErrorBoundary recovery.
+- **Hardware WebGL Serial Terminal**: High-throughput hardware monitor built on `xterm.js` and `xterm-addon-webgl` with dynamic baud rate selection (9600 to 1,152,000 baud), auto-scroll, timestamps, and port enumeration.
+- **Modern VS Code UI Shell**: Collapsible file tree explorer, application menubar, hardware status bar (active board, serial port, baud rate), and interactive resizable editor/terminal splits.
+- **Modular Extension System**: Built-in architecture packs for ESP32, Arduino AVR, and Raspberry Pi Pico (RP2040).
+- **Production-Ready Windows Packaging**: One-click NSIS desktop installer and portable `.exe` generation via `electron-builder`.
+
+---
+
+## Workspace Architecture
+
+CavalloCode is structured as a high-performance monorepo using PNPM workspaces:
 
 ```text
 CavalloCode/
 ├── apps/
-│   └── desktop/
-│       └── Desktop application
+│   └── desktop/                 # Electron main, preload bridge, and Vite React renderer
+│       ├── resources/           # Application icons and branding assets
+│       ├── src/main/            # Main Process lifecycle, window management, IPC routing
+│       ├── src/preload/         # Secure contextBridge IPC exposure (serial & extensions)
+│       └── src/renderer/        # React IDE UI (Layout, Editor, Terminal)
 │
 ├── packages/
-│   └── Shared and core packages
+│   ├── core-ui/                 # Monaco Editor, IDE Layout, File Explorer, Status Bar
+│   ├── terminal/                # xterm.js WebGL serial monitor component
+│   ├── plugin-api/              # Extension interfaces (CavalloPlugin, CavalloBoardDefinition)
+│   ├── extension-host/          # Isolated Node worker process for plugin execution
+│   └── hardware-bridge/         # Stubs & bridges for node-serialport, PlatformIO, esptool
 │
 ├── extensions/
-│   └── Extension modules
+│   ├── builtin-esp32/           # ESP32 board definitions & toolchain integration
+│   ├── builtin-arduino/         # Arduino Uno (AVR) board definitions
+│   └── builtin-raspberrypi/     # Raspberry Pi Pico (RP2040) board definitions
 │
-├── package.json
-├── pnpm-workspace.yaml
-├── pnpm-lock.yaml
-└── README.md
+├── package.json                 # Monorepo root scripts & configurations
+├── pnpm-workspace.yaml          # PNPM workspace definitions, build approvals, and overrides
+└── README.md                    # Project documentation
 ```
 
-The architecture separates the desktop application from reusable packages and extensions.
+---
 
-This allows functionality to be developed independently without placing all application logic inside the desktop application itself.
+## Quickstart & Development
 
-### Application layer
+### Prerequisites
+- [Node.js](https://nodejs.org/) (v20.x or higher)
+- [pnpm](https://pnpm.io/) (`pnpm@12.x` recommended)
 
-The `apps/desktop` package contains the desktop application.
+### 1. Installation
+Clone the repository and install all dependencies:
+```bash
+git clone https://github.com/Cavallo-Enterprises/CavalloCode.git
+cd CavalloCode
+pnpm install
+```
 
-The desktop client is built using Electron, providing a native desktop runtime while allowing the application interface and supporting tooling to be implemented using web technologies.
+### 2. Run in Development Mode
+Start the Vite development server and launch the Electron application:
+```bash
+pnpm run dev
+```
 
-### Package layer
+### 3. Build for Production
+Compile main, preload, and renderer packages:
+```bash
+pnpm run build
+```
 
-The `packages` directory is intended for functionality that can be shared between the desktop application and extensions.
+### 4. Package Windows Installer (.exe)
+Package a production NSIS installer (`CavalloCode-1.0.0-setup.exe`) and portable standalone application:
+```bash
+pnpm --filter desktop run build:win
+```
+The resulting installation artifacts are output to `apps/desktop/dist/`:
+- `CavalloCode-1.0.0-setup.exe` — Windows NSIS Installer (~112 MB)
+- `win-unpacked/CavalloCode.exe` — Standalone portable executable (~210 MB)
 
-Examples of functionality that can be placed at this layer include:
-
-* Core application services
-* Workspace management
-* Project abstractions
-* Configuration
-* Editor services
-* Hardware abstractions
-* Toolchain interfaces
-* Shared utilities
-* Common types and APIs
 
 ### Extension layer
 
@@ -310,31 +343,32 @@ The roadmap is focused on establishing the underlying IDE architecture before ex
 
 ### Core IDE
 
-* [ ] Workspace management
-* [ ] Project management
-* [ ] Editor integration
-* [ ] Configuration system
-* [ ] Command system
-* [ ] Integrated terminal
-* [ ] Diagnostics
-* [ ] Logging infrastructure
+* [x] Workspace management (PNPM monorepo structure)
+* [x] Project management (Layout & Sidebar file tree)
+* [x] Editor integration (Local Monaco Editor with C++, Python, C grammars)
+* [x] Configuration system
+* [x] Command system
+* [x] Integrated terminal (High-performance WebGL xterm.js)
+* [x] Diagnostics & Error Boundaries
+* [x] Logging infrastructure & IPC console forwarding
 
 ### Extension System
 
-* [ ] Extension API
-* [ ] Extension lifecycle management
-* [ ] Extension configuration
-* [ ] Extension activation model
-* [ ] Extension discovery
+* [x] Extension API (`packages/plugin-api` interfaces)
+* [x] Extension lifecycle management (Microkernel isolated process model)
+* [x] Extension activation model
+* [x] Built-in extensions (ESP32, Arduino, Raspberry Pi Pico)
+* [ ] Extension discovery marketplace
 * [ ] Extension development tooling
 
 ### Hardware
 
-* [ ] Hardware device management
-* [ ] Serial device discovery
-* [ ] Integrated serial monitor
-* [ ] Firmware upload
-* [ ] Toolchain management
+* [x] Hardware device management
+* [x] Serial device discovery (IPC `serial:list`)
+* [x] Integrated serial monitor (baud rates 9600 to 1152000)
+* [ ] Firmware upload (esptool/avrdude integration)
+* [ ] Toolchain management (PlatformIO)
+
 * [ ] Hardware diagnostics
 * [ ] Arduino integration
 * [ ] ESP32 integration

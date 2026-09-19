@@ -43,19 +43,49 @@ function createWindow(): void {
     mainWindow.show()
   })
 
+  // Fallback to show window if ready-to-show takes too long
+  setTimeout(() => {
+    if (!mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      mainWindow.show()
+    }
+  }, 3000)
+
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
   })
 
+  // Programmatic renderer console diagnostics
+  mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    console.log(`[Renderer Console] [${level}] ${message} (${sourceId}:${line})`)
+  })
+
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[Renderer Load Failure] ${errorCode}: ${errorDescription} (${validatedURL})`)
+    if (is.dev && validatedURL.startsWith('http')) {
+      console.log('[Renderer] Falling back to local static build...')
+      mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    }
+  })
+
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error('[Renderer Crash]', details)
+  })
+
   // HMR for renderer base on electron-vite cli.
   // Load the remote URL for development or the local html file for production.
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+  const devUrl = process.env['ELECTRON_RENDERER_URL'] || 'http://localhost:5173'
+  if (is.dev) {
+    console.log(`[Main] Attempting to load renderer dev URL: ${devUrl}`)
+    mainWindow.loadURL(devUrl).catch((err) => {
+      console.warn(`[Main] Failed to load ${devUrl}, falling back to static html:`, err)
+      mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    })
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 }
+
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.cavallocode')

@@ -1,5 +1,9 @@
-import React, { useState } from 'react';
-import MonacoEditor from '@monaco-editor/react';
+import React, { useState, Component, ErrorInfo, ReactNode } from 'react';
+import * as monaco from 'monaco-editor';
+import MonacoEditor, { loader } from '@monaco-editor/react';
+
+// Configure loader to use locally bundled Monaco instead of CDN (prevents 15-second timeout and offline blank screen)
+loader.config({ monaco });
 
 type Theme = 'vs-dark' | 'vs' | 'hc-black';
 type Language = 'cpp' | 'python' | 'c' | 'plaintext';
@@ -50,7 +54,39 @@ interface MonacoEditorProps {
   onThemeChange?: (theme: Theme) => void;
 }
 
+class EditorErrorBoundary extends Component<{ children: ReactNode; fallbackValue: string; onChange: (v: string) => void }, { hasError: boolean }> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('Monaco Editor encountered an error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#1e1e1e', color: '#ccc', padding: 8 }}>
+          <div style={{ color: '#e74c3c', marginBottom: 4, fontSize: 12 }}>Editor fallback mode (Monaco runtime recovering)</div>
+          <textarea
+            value={this.props.fallbackValue}
+            onChange={(e) => this.props.onChange(e.target.value)}
+            style={{ flex: 1, backgroundColor: '#252526', color: '#d4d4d4', border: '1px solid #3c3c3c', fontFamily: 'monospace', fontSize: 13, resize: 'none', padding: 8 }}
+          />
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export const CavalloMonacoEditor: React.FC<MonacoEditorProps> = ({
+
   theme = 'vs-dark',
   onThemeChange,
 }) => {
@@ -116,29 +152,32 @@ export const CavalloMonacoEditor: React.FC<MonacoEditorProps> = ({
         ))}
       </div>
       <div style={{ flex: 1 }}>
-        <MonacoEditor
-          height="100%"
-          language={language}
-          value={code}
-          theme={theme}
-          onChange={(val) => setCode(val ?? '')}
-          options={{
-            fontSize: 14,
-            fontFamily: "'Cascadia Code', 'Fira Code', 'Consolas', monospace",
-            minimap: { enabled: true },
-            wordWrap: 'on',
-            scrollBeyondLastLine: false,
-            automaticLayout: true,
-            tabSize: 2,
-            lineNumbers: 'on',
-            folding: true,
-            bracketPairColorization: { enabled: true },
-          }}
-        />
+        <EditorErrorBoundary fallbackValue={code} onChange={setCode}>
+          <MonacoEditor
+            height="100%"
+            language={language}
+            value={code}
+            theme={theme}
+            onChange={(val) => setCode(val ?? '')}
+            options={{
+              fontSize: 14,
+              fontFamily: "'Cascadia Code', 'Fira Code', 'Consolas', monospace",
+              minimap: { enabled: true },
+              wordWrap: 'on',
+              scrollBeyondLastLine: false,
+              automaticLayout: true,
+              tabSize: 2,
+              lineNumbers: 'on',
+              folding: true,
+              bracketPairColorization: { enabled: true },
+            }}
+          />
+        </EditorErrorBoundary>
       </div>
     </div>
   );
 };
+
 
 export default CavalloMonacoEditor;
 
