@@ -1,54 +1,61 @@
 import React, { useState } from 'react';
-import { Layout, CavalloMonacoEditor } from 'core-ui/src/index';
+import { Layout, CavalloMonacoEditor, DEFAULT_PROJECT_FILES, FileItem, Theme } from 'core-ui/src/index';
 import { WebGLTerminal } from 'terminal/src/index';
-
-type Theme = 'vs-dark' | 'vs' | 'hc-black';
 
 function App(): JSX.Element {
   const [theme, setTheme] = useState<Theme>('vs-dark');
-  const [terminalHeight, setTerminalHeight] = useState(220);
+  const [activeFile, setActiveFile] = useState<FileItem>(DEFAULT_PROJECT_FILES[0]);
+  const [fileContents, setFileContents] = useState<Record<string, string>>(() => {
+    const initial: Record<string, string> = {};
+    DEFAULT_PROJECT_FILES.forEach((f) => {
+      initial[f.id] = f.content;
+    });
+    return initial;
+  });
+  const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
+  const [activeBoard, setActiveBoard] = useState('ESP32 Dev Module');
+  const [activePort, setActivePort] = useState('COM3');
+  const [activeBaud, setActiveBaud] = useState(115200);
+
+  const handleCodeChange = (newVal: string) => {
+    setFileContents((prev) => ({
+      ...prev,
+      [activeFile.id]: newVal
+    }));
+  };
+
+  const handleFileSelect = (file: FileItem) => {
+    setActiveFile(file);
+    setCursorPos({ line: 1, col: 1 });
+  };
 
   return (
-    <Layout theme={theme} onThemeChange={setTheme}>
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-        {/* Monaco Editor — takes all remaining space */}
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-          <CavalloMonacoEditor theme={theme} onThemeChange={setTheme} />
-        </div>
-
-        {/* Resize handle */}
-        <div
-          style={{
-            height: 4,
-            background: '#007acc',
-            cursor: 'ns-resize',
-            flexShrink: 0,
-            opacity: 0.6,
-          }}
-          onMouseDown={(e) => {
-            const startY = e.clientY;
-            const startH = terminalHeight;
-            const onMove = (ev: MouseEvent) => {
-              const delta = startY - ev.clientY;
-              setTerminalHeight(Math.max(80, Math.min(600, startH + delta)));
-            };
-            const onUp = () => {
-              window.removeEventListener('mousemove', onMove);
-              window.removeEventListener('mouseup', onUp);
-            };
-            window.addEventListener('mousemove', onMove);
-            window.addEventListener('mouseup', onUp);
-          }}
+    <Layout
+      theme={theme}
+      onThemeChange={setTheme}
+      activeFile={activeFile}
+      onFileSelect={handleFileSelect}
+      cursorPos={cursorPos}
+      activeBoard={activeBoard}
+      activePort={activePort}
+      activeBaud={activeBaud}
+      terminalComponent={
+        <WebGLTerminal
+          onPortSelect={(p) => setActivePort(p)}
+          onBaudSelect={(b) => setActiveBaud(b)}
         />
-
-        {/* WebGL Serial Terminal — resizable */}
-        <div style={{ height: terminalHeight, flexShrink: 0, borderTop: '1px solid #3c3c3c' }}>
-          <WebGLTerminal />
-        </div>
-      </div>
+      }
+    >
+      <CavalloMonacoEditor
+        value={fileContents[activeFile.id] !== undefined ? fileContents[activeFile.id] : activeFile.content}
+        onChange={handleCodeChange}
+        language={activeFile.language}
+        onCursorChange={(line, col) => setCursorPos({ line, col })}
+        theme={theme}
+        onThemeChange={setTheme}
+      />
     </Layout>
   );
 }
 
 export default App;
-

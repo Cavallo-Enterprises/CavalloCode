@@ -17,9 +17,20 @@ const api = {
     ipcRenderer.removeAllListeners('serial:data');
   },
 
+  // Window controls
+  minimizeWindow: () => ipcRenderer.send('window:minimize'),
+  maximizeWindow: () => ipcRenderer.send('window:maximize'),
+  closeWindow: () => ipcRenderer.send('window:close'),
+  isWindowMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+
+  // Hardware operations
+  compileHardware: (params?: any) => ipcRenderer.invoke('hardware:compile', params),
+  flashHardware: (params?: any) => ipcRenderer.invoke('hardware:flash', params),
+
   // Extension host
   getInstalledExtensions: () => ipcRenderer.invoke('ext:list'),
 }
+
 
 if (process.contextIsolated) {
   try {

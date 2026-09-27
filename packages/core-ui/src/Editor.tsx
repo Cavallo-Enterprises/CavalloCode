@@ -50,8 +50,14 @@ int main() {
 };
 
 interface MonacoEditorProps {
+  value?: string;
+  onChange?: (val: string) => void;
+  language?: Language;
+  onLanguageChange?: (lang: Language) => void;
+  onCursorChange?: (line: number, col: number) => void;
   theme?: Theme;
   onThemeChange?: (theme: Theme) => void;
+  showToolbar?: boolean;
 }
 
 class EditorErrorBoundary extends Component<{ children: ReactNode; fallbackValue: string; onChange: (v: string) => void }, { hasError: boolean }> {
@@ -86,79 +92,110 @@ class EditorErrorBoundary extends Component<{ children: ReactNode; fallbackValue
 }
 
 export const CavalloMonacoEditor: React.FC<MonacoEditorProps> = ({
-
+  value,
+  onChange,
+  language: propLanguage,
+  onLanguageChange,
+  onCursorChange,
   theme = 'vs-dark',
   onThemeChange,
+  showToolbar = false,
 }) => {
-  const [language, setLanguage] = useState<Language>('cpp');
-  const [code, setCode] = useState<string>(DEFAULT_CODE['cpp']);
+  const [internalLanguage, setInternalLanguage] = useState<Language>('cpp');
+  const [internalCode, setInternalCode] = useState<string>(DEFAULT_CODE['cpp']);
+
+  const activeLanguage = propLanguage || internalLanguage;
+  const activeCode = value !== undefined ? value : internalCode;
 
   const handleLanguageChange = (lang: Language) => {
-    setLanguage(lang);
-    setCode(DEFAULT_CODE[lang]);
+    if (onLanguageChange) {
+      onLanguageChange(lang);
+    } else {
+      setInternalLanguage(lang);
+      setInternalCode(DEFAULT_CODE[lang]);
+    }
   };
 
+  const handleCodeChange = (newVal: string | undefined) => {
+    const val = newVal ?? '';
+    if (onChange) {
+      onChange(val);
+    } else {
+      setInternalCode(val);
+    }
+  };
+
+  const handleEditorDidMount = (editor: any) => {
+    editor.onDidChangeCursorPosition((e: any) => {
+      onCursorChange?.(e.position.lineNumber, e.position.column);
+    });
+  };
+
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%' }}>
-      {/* Editor Toolbar */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          padding: '4px 8px',
-          backgroundColor: theme === 'vs' ? '#f3f3f3' : '#2d2d2d',
-          borderBottom: '1px solid #3c3c3c',
-          fontSize: '12px',
-          color: theme === 'vs' ? '#333' : '#ccc',
-        }}
-      >
-        <span style={{ marginRight: 4 }}>Language:</span>
-        {LANGUAGES.map((l) => (
-          <button
-            key={l.value}
-            onClick={() => handleLanguageChange(l.value)}
-            style={{
-              background: language === l.value ? '#007acc' : 'transparent',
-              color: language === l.value ? 'white' : theme === 'vs' ? '#333' : '#ccc',
-              border: '1px solid #555',
-              borderRadius: '3px',
-              padding: '2px 8px',
-              cursor: 'pointer',
-              fontSize: '11px',
-            }}
-          >
-            {l.label}
-          </button>
-        ))}
-        <div style={{ flex: 1 }} />
-        <span style={{ marginRight: 4 }}>Theme:</span>
-        {(['vs-dark', 'vs', 'hc-black'] as Theme[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => onThemeChange?.(t)}
-            style={{
-              background: theme === t ? '#007acc' : 'transparent',
-              color: theme === t ? 'white' : theme === 'vs' ? '#333' : '#ccc',
-              border: '1px solid #555',
-              borderRadius: '3px',
-              padding: '2px 8px',
-              cursor: 'pointer',
-              fontSize: '11px',
-            }}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
-      <div style={{ flex: 1 }}>
-        <EditorErrorBoundary fallbackValue={code} onChange={setCode}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden' }}>
+      {/* Optional Editor Toolbar */}
+      {showToolbar && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '4px 8px',
+            backgroundColor: theme === 'vs' ? '#f3f3f3' : '#2d2d2d',
+            borderBottom: '1px solid #3c3c3c',
+            fontSize: '12px',
+            color: theme === 'vs' ? '#333' : '#ccc',
+          }}
+        >
+          <span style={{ marginRight: 4 }}>Language:</span>
+          {LANGUAGES.map((l) => (
+            <button
+              key={l.value}
+              onClick={() => handleLanguageChange(l.value)}
+              style={{
+                background: activeLanguage === l.value ? '#007acc' : 'transparent',
+                color: activeLanguage === l.value ? 'white' : theme === 'vs' ? '#333' : '#ccc',
+                border: '1px solid #555',
+                borderRadius: '0px',
+                padding: '2px 8px',
+                cursor: 'pointer',
+                fontSize: '11px',
+              }}
+            >
+              {l.label}
+            </button>
+          ))}
+          <div style={{ flex: 1 }} />
+          <span style={{ marginRight: 4 }}>Theme:</span>
+          {(['vs-dark', 'vs', 'hc-black'] as Theme[]).map((t) => (
+            <button
+              key={t}
+              onClick={() => onThemeChange?.(t)}
+              style={{
+                background: theme === t ? '#007acc' : 'transparent',
+                color: theme === t ? 'white' : theme === 'vs' ? '#333' : '#ccc',
+                border: '1px solid #555',
+                borderRadius: '0px',
+                padding: '2px 8px',
+                cursor: 'pointer',
+                fontSize: '11px',
+              }}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      )}
+      <div style={{ flex: 1, height: '100%', width: '100%', overflow: 'hidden' }}>
+        <EditorErrorBoundary fallbackValue={activeCode} onChange={handleCodeChange}>
           <MonacoEditor
             height="100%"
-            language={language}
-            value={code}
+            language={activeLanguage}
+            value={activeCode}
             theme={theme}
-            onChange={(val) => setCode(val ?? '')}
+            onChange={handleCodeChange}
+            onMount={handleEditorDidMount}
             options={{
               fontSize: 14,
               fontFamily: "'Cascadia Code', 'Fira Code', 'Consolas', monospace",
@@ -177,6 +214,7 @@ export const CavalloMonacoEditor: React.FC<MonacoEditorProps> = ({
     </div>
   );
 };
+
 
 
 export default CavalloMonacoEditor;
