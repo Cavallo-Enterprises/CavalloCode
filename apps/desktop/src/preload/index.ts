@@ -9,6 +9,12 @@ const api = {
   disconnectSerial: () => ipcRenderer.invoke('serial:disconnect'),
   sendSerialData: (data: string) => ipcRenderer.invoke('serial:send', data),
 
+  // Native workspace file operations
+  openDirectory: () => ipcRenderer.invoke('fs:open-directory'),
+  readFile: (path: string) => ipcRenderer.invoke('fs:read-file', path),
+  writeFile: (path: string, content: string) => ipcRenderer.invoke('fs:write-file', path, content),
+  readDirectory: (path: string) => ipcRenderer.invoke('fs:read-directory', path),
+
   // Subscribe to incoming serial data from main
   onSerialData: (callback: (data: string) => void) => {
     ipcRenderer.on('serial:data', (_event, data) => callback(data));
@@ -24,8 +30,14 @@ const api = {
   isWindowMaximized: () => ipcRenderer.invoke('window:isMaximized'),
 
   // Hardware operations
-  compileHardware: (params?: any) => ipcRenderer.invoke('hardware:compile', params),
-  flashHardware: (params?: any) => ipcRenderer.invoke('hardware:flash', params),
+  compileProject: (projectPath: string) => ipcRenderer.invoke('hardware:compile', projectPath),
+  flashESP32: (port: string, binPath: string) => ipcRenderer.invoke('hardware:flash-esp32', port, binPath),
+  flashArduino: (board: 'uno' | 'nano', port: string, hexPath: string) => ipcRenderer.invoke('hardware:flash-arduino', board, port, hexPath),
+  onHardwareBuildLog: (callback: (line: string) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, line: string) => callback(line)
+    ipcRenderer.on('hardware:build-log', listener)
+    return () => ipcRenderer.removeListener('hardware:build-log', listener)
+  },
 
   // Extension host
   getInstalledExtensions: () => ipcRenderer.invoke('ext:list'),

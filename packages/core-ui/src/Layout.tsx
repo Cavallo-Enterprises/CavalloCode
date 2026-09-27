@@ -7,8 +7,6 @@ import {
   Terminal as TerminalIcon,
   Boxes,
   Settings as SettingsIcon,
-  Play,
-  Zap,
   Minus,
   Square,
   X,
@@ -16,9 +14,10 @@ import {
   ChevronRight,
   FileCode,
   FileText,
+  Check,
+  Upload,
   Search,
   CheckCircle,
-  AlertCircle
 } from 'lucide-react';
 import { CommandPalette } from './CommandPalette';
 
@@ -30,6 +29,7 @@ export interface FileItem {
   path: string;
   language: 'cpp' | 'python' | 'c' | 'plaintext';
   content: string;
+  isDirectory?: boolean;
 }
 
 export const DEFAULT_PROJECT_FILES: FileItem[] = [
@@ -111,6 +111,13 @@ interface LayoutProps {
   activeBoard?: string;
   activePort?: string;
   activeBaud?: number;
+  workspaceRoot?: string | null;
+  workspaceFiles?: FileItem[];
+  dirtyFileIds?: string[];
+  onOpenFolder?: () => void;
+  onSaveFile?: () => void;
+  onHardwareLog?: (callback: (line: string) => void) => () => void;
+  onOpenFile?: (file: FileItem) => void;
 }
 
 export const Layout: React.FC<LayoutProps> = ({
@@ -125,7 +132,14 @@ export const Layout: React.FC<LayoutProps> = ({
   onFlash,
   activeBoard = 'ESP32 Dev Module',
   activePort = 'COM3',
-  activeBaud = 115200
+  activeBaud = 115200,
+  workspaceRoot = null,
+  workspaceFiles = DEFAULT_PROJECT_FILES,
+  dirtyFileIds = [],
+  onOpenFolder,
+  onSaveFile,
+  onHardwareLog,
+  onOpenFile
 }) => {
   const [activeActivity, setActiveActivity] = useState<'explorer' | 'hardware' | 'serial' | 'extensions' | 'settings'>('explorer');
   const [openFiles, setOpenFiles] = useState<FileItem[]>([DEFAULT_PROJECT_FILES[0], DEFAULT_PROJECT_FILES[1]]);
@@ -144,15 +158,35 @@ export const Layout: React.FC<LayoutProps> = ({
   const handleClose = () => (window as any).api?.closeWindow?.();
 
   // File open handler
-  const handleOpenFile = (fileName: string) => {
-    const found = DEFAULT_PROJECT_FILES.find((f) => f.name === fileName || f.path === fileName);
+  const handleOpenFile = async (fileName: string) => {
+    let found = workspaceFiles.find((f) => f.name === fileName || f.path === fileName);
+    if (found && !found.content && !found.isDirectory && (window as any).api?.readFile) {
+      found = { ...found, content: await (window as any).api.readFile(found.path) };
+    }
     if (found) {
       if (!openFiles.some((f) => f.id === found.id)) {
         setOpenFiles([...openFiles, found]);
       }
-      onFileSelect(found);
+      (onOpenFile || onFileSelect)(found);
     }
   };
+
+  useEffect(() => onHardwareLog?.((line) => {
+    setBuildLogs((prev) => `${prev}${line}\n`);
+    setBottomOpen(true);
+    setBottomTab('build');
+  }), [onHardwareLog]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        onSaveFile?.();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onSaveFile]);
 
   const handleCloseTab = (e: React.MouseEvent, fileToClose: FileItem) => {
     e.stopPropagation();
@@ -172,10 +206,10 @@ export const Layout: React.FC<LayoutProps> = ({
     try {
       if (onCompile) {
         const out = await onCompile();
-        setBuildLogs((prev) => prev + out);
-      } else if ((window as any).api?.compileHardware) {
-        const res = await (window as any).api.compileHardware({ board: activeBoard });
-        setBuildLogs((prev) => prev + (res?.output || 'Compilation finished.\n'));
+                        if (!onHardwareLog) setBuildLogs((prev) => prev + out);
+      } else if ((window as any).api?.compileProject) {
+        const res = await (window as any).api.compileProject(workspaceRoot || '.');
+        if (!onHardwareLog) setBuildLogs((prev) => prev + (res?.output || 'Compilation finished.\n'));
       } else {
         setBuildLogs((prev) => prev + `[CavalloCode Toolchain] Built firmware for ${activeBoard}.\n=== [SUCCESS] ===\n`);
       }
@@ -195,10 +229,20 @@ export const Layout: React.FC<LayoutProps> = ({
     try {
       if (onFlash) {
         const out = await onFlash();
-        setBuildLogs((prev) => prev + out);
-      } else if ((window as any).api?.flashHardware) {
-        const res = await (window as any).api.flashHardware({ port: activePort });
-        setBuildLogs((prev) => prev + (res?.output || 'Flash finished.\n'));
+        if (!onHardwareLog) setBuildLogs((prev) => prev + out);
+      } else if ((window as any).api?.compileProject) {
+        const build = await (window as any).api.compileProject(workspaceRoot || '.');
+        if (!build.success) throw new Error('Compilation failed; upload canceled.');
+        const isArduino = /arduino|uno|nano/i.test(activeBoard);
+        const board = /nano/i.test(activeBoard) ? 'nano' : 'uno';
+        const artifact = isArduino
+          ? `${workspaceRoot}/.pio/build/${board === 'nano' ? 'nanoatmega328' : 'uno'}/firmware.hex`
+          : `${workspaceRoot}/.pio/build/esp32dev/firmware.bin`;
+        const res = isArduino
+          ? await (window as any).api.flashArduino(board, activePort, artifact)
+          : await (window as any).api.flashESP32(activePort, artifact);
+        if (!res.success) throw new Error('Upload failed.');
+        if (!onHardwareLog) setBuildLogs((prev) => prev + (res?.output || 'Flash finished.\n'));
       } else {
         setBuildLogs((prev) => prev + `[CavalloCode Flasher] Flashed firmware to ${activePort}.\n=== [SUCCESS] ===\n`);
       }
@@ -300,6 +344,7 @@ export const Layout: React.FC<LayoutProps> = ({
                       onClick={() => {
                         setActiveMenu(null);
                         if (item.includes('Command Palette')) setCommandPaletteOpen(true);
+                        if (item === 'Save') onSaveFile?.();
                         if (item.includes('Compile')) handleCompile();
                         if (item.includes('Upload')) handleFlash();
                         if (item.includes('Toggle Panel')) setBottomOpen(!bottomOpen);
@@ -329,7 +374,7 @@ export const Layout: React.FC<LayoutProps> = ({
               title="Compile / Verify Firmware"
               style={iconBtnStyle}
             >
-              <Play size={13} color="#4ec9b0" />
+              <Check size={13} color="#4ec9b0" />
             </button>
             <button
               onClick={handleFlash}
@@ -337,7 +382,7 @@ export const Layout: React.FC<LayoutProps> = ({
               title="Upload / Flash to Target"
               style={iconBtnStyle}
             >
-              <Zap size={13} color="#e5c07b" />
+              <Upload size={13} color="#e5c07b" />
             </button>
           </div>
         </div>
@@ -493,14 +538,15 @@ export const Layout: React.FC<LayoutProps> = ({
                         }}
                       >
                         <ChevronDown size={14} />
-                        <span>CAVALLO-WORKSPACE</span>
+                        <span>{workspaceRoot ? workspaceRoot.split(/[\\/]/).pop() : 'CAVALLO-WORKSPACE'}</span>
                       </div>
-                      {DEFAULT_PROJECT_FILES.map((file) => {
+                      <button onClick={onOpenFolder} style={{ ...sidebarBtnStyle, background: '#3c3c3c', margin: '4px 12px 8px', width: 'calc(100% - 24px)' }}>Open Folder</button>
+                      {workspaceFiles.map((file) => {
                         const isSelected = activeFile.id === file.id;
                         return (
                           <div
                             key={file.id}
-                            onClick={() => handleOpenFile(file.name)}
+                            onDoubleClick={() => { if (!file.isDirectory) handleOpenFile(file.path); }}
                             style={{
                               padding: '5px 12px 5px 28px',
                               cursor: 'pointer',
@@ -519,12 +565,12 @@ export const Layout: React.FC<LayoutProps> = ({
                               if (!isSelected) (e.currentTarget as HTMLDivElement).style.backgroundColor = 'transparent';
                             }}
                           >
-                            {file.name.endsWith('.cpp') || file.name.endsWith('.h') ? (
+                            {file.isDirectory ? <ChevronRight size={14} color="#c5c5c5" /> : file.name.endsWith('.cpp') || file.name.endsWith('.h') ? (
                               <FileCode size={14} color="#569cd6" />
                             ) : (
                               <FileText size={14} color="#9cdcfe" />
                             )}
-                            <span>{file.name}</span>
+                            <span>{file.name}{dirtyFileIds.includes(file.id) ? ' •' : ''}</span>
                           </div>
                         );
                       })}
@@ -619,7 +665,7 @@ export const Layout: React.FC<LayoutProps> = ({
                         return (
                           <div
                             key={f.id}
-                            onClick={() => onFileSelect(f)}
+                            onClick={() => (onOpenFile || onFileSelect)(f)}
                             style={{
                               height: '34px',
                               padding: '0 12px',
@@ -635,7 +681,7 @@ export const Layout: React.FC<LayoutProps> = ({
                             }}
                           >
                             <FileCode size={13} color={isActive ? '#007acc' : '#888888'} />
-                            <span>{f.name}</span>
+                            <span>{f.name}{dirtyFileIds.includes(f.id) ? ' •' : ''}</span>
                             <span
                               onClick={(e) => handleCloseTab(e, f)}
                               style={{

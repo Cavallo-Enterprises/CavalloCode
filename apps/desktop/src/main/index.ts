@@ -1,8 +1,10 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
+import { promises as fs } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { fork, ChildProcess } from 'child_process'
+import { compileProject, flashArduino, flashESP32, hardwareBuildEvents } from '../../../../packages/hardware-bridge/src/index'
 
 
 let extensionHostProcess: ChildProcess | null = null;
@@ -101,6 +103,26 @@ app.whenReady().then(() => {
 
   // ── IPC HANDLERS ──────────────────────────────────────────────────────────
 
+  ipcMain.handle('fs:open-directory', async (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    const options = { properties: ['openDirectory'] as Array<'openDirectory'> }
+    const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
+    return result.canceled ? null : result.filePaths[0]
+  })
+  ipcMain.handle('fs:read-file', async (_event, path: string) => fs.readFile(path, 'utf8'))
+  ipcMain.handle('fs:write-file', async (_event, path: string, content: string) => fs.writeFile(path, content, 'utf8'))
+  ipcMain.handle('fs:read-directory', async (_event, path: string) => {
+    const entries = await fs.readdir(path, { withFileTypes: true })
+    return entries.map((entry) => ({ name: entry.name, path: join(path, entry.name), isDirectory: entry.isDirectory() }))
+      .sort((a, b) => Number(b.isDirectory) - Number(a.isDirectory) || a.name.localeCompare(b.name))
+  })
+
+  hardwareBuildEvents.on('log', (line: string) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) window.webContents.send('hardware:build-log', line)
+    }
+  })
+
   // List available serial ports (stub; replace with node-serialport in real build)
   ipcMain.handle('serial:list', async () => {
     // Real impl: const { SerialPort } = await import('serialport');
@@ -161,22 +183,9 @@ app.whenReady().then(() => {
     return win?.isMaximized() ?? false;
   });
 
-  // Hardware operations
-  ipcMain.handle('hardware:compile', async (_event, params) => {
-    console.log('[MainProcess] Compiling hardware project...', params);
-    return {
-      success: true,
-      output: '[CavalloCode Toolchain] Initializing PlatformIO / AVR toolchain...\nIndexing source files...\nLinking firmware binary: .pio/build/esp32dev/firmware.bin\nRAM:   [==        ]  16.4% (used 53748 bytes from 327680 bytes)\nFlash: [===       ]  32.1% (used 421092 bytes from 1310720 bytes)\n=== [SUCCESS] Compilation completed in 1.42s ===\n'
-    };
-  });
-
-  ipcMain.handle('hardware:flash', async (_event, params) => {
-    console.log('[MainProcess] Flashing firmware to hardware device...', params);
-    return {
-      success: true,
-      output: '[CavalloCode Flasher] Connecting to target on COM3 (115200 baud)...\nChip is ESP32-D0WD-V3 (revision v3.0)\nErasing flash memory...\nWriting at 0x00010000... (100%)\nHash of data verified.\nLeaving... Hard resetting via RTS pin...\n=== [SUCCESS] Device successfully flashed! ===\n'
-    };
-  });
+  ipcMain.handle('hardware:compile', async (_event, projectPath: string) => compileProject(projectPath))
+  ipcMain.handle('hardware:flash-esp32', async (_event, port: string, binPath: string) => flashESP32(port, binPath))
+  ipcMain.handle('hardware:flash-arduino', async (_event, board: 'uno' | 'nano', port: string, hexPath: string) => flashArduino(board, port, hexPath))
 
   ipcMain.on('ping', () => console.log('pong'))
 
