@@ -4,7 +4,7 @@ import { Layout, CavalloMonacoEditor, DEFAULT_PROJECT_FILES, FileItem, Theme, Up
 import { SerialMonitor, SerialPlotter } from 'terminal/src/index';
 
 function App(): ReactElement {
-  const [theme, setTheme] = useState<Theme>('vs-dark');
+  const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('cavallo.theme') as Theme) || 'vs-dark');
   const [activeFile, setActiveFile] = useState<FileItem>(DEFAULT_PROJECT_FILES[0]);
   const [fileContents, setFileContents] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
@@ -14,9 +14,9 @@ function App(): ReactElement {
     return initial;
   });
   const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
-  const [activeBoard, setActiveBoard] = useState('ESP32 Dev Module');
+  const [activeBoard, setActiveBoard] = useState(() => localStorage.getItem('cavallo.board') || 'ESP32 Dev Module');
   const [activePort, setActivePort] = useState('');
-  const [activeBaud, setActiveBaud] = useState(115200);
+  const [activeBaud, setActiveBaud] = useState(() => Number(localStorage.getItem('cavallo.baud')) || 115200);
   const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null);
   const [workspaceFiles, setWorkspaceFiles] = useState<FileItem[]>(DEFAULT_PROJECT_FILES);
   const [dirtyFileIds, setDirtyFileIds] = useState<string[]>([]);
@@ -26,17 +26,23 @@ function App(): ReactElement {
   const [recentLogs, setRecentLogs] = useState('');
   const [serialConnected, setSerialConnected] = useState(false);
 
-  useEffect(() => window.api.onDebugOutput((event) => {
+  useEffect(() => {
+    localStorage.setItem('cavallo.theme', theme);
+    localStorage.setItem('cavallo.board', activeBoard);
+    localStorage.setItem('cavallo.baud', String(activeBaud));
+  }, [theme, activeBoard, activeBaud]);
+
+  useEffect(() => window.api?.onDebugOutput?.((event) => {
     setDebugOutput((current) => (current + event.text).slice(-20000));
     if (/GDB exited/i.test(event.text)) setDebuggerRunning(false);
-  }), []);
+  }) || undefined, []);
   useEffect(() => {
-    if (debuggerRunning) void window.api.debugSetBreakpoints(breakpoints);
+    if (debuggerRunning) void window.api?.debugSetBreakpoints?.(breakpoints);
   }, [breakpoints, debuggerRunning]);
 
   const appendRecentLog = useCallback((line: string) => setRecentLogs((current) => `${current}${line}\n`.split(/\r?\n/).slice(-50).join('\n')), []);
-  useEffect(() => window.cavallo.onSerialData(appendRecentLog), [appendRecentLog]);
-  const subscribeHardwareLogs = useCallback((callback: (line: string) => void) => window.api.onHardwareBuildLog((line) => { appendRecentLog(line); callback(line); }), [appendRecentLog]);
+  useEffect(() => window.cavallo?.onSerialData?.(appendRecentLog) || undefined, [appendRecentLog]);
+  const subscribeHardwareLogs = useCallback((callback: (line: string) => void) => window.api?.onHardwareBuildLog?.((line) => { appendRecentLog(line); callback(line); }) || (() => {}), [appendRecentLog]);
   const handleAskAI = useCallback((prompt: string) => window.api.askAI(prompt, {
     code: fileContents[activeFile.id] ?? activeFile.content,
     fileName: activeFile.name,
@@ -145,6 +151,8 @@ function App(): ReactElement {
         return projectPath;
       }}
       onBoardChange={setActiveBoard}
+      onPortChange={setActivePort}
+      onBaudChange={setActiveBaud}
       serialConnected={serialConnected}
       onToggleSerial={() => window.dispatchEvent(new Event('cavallo:toggle-serial'))}
       onOpenSerial={() => window.dispatchEvent(new Event('cavallo:open-serial'))}

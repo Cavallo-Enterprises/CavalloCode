@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Terminal } from 'xterm';
-import { WebglAddon } from 'xterm-addon-webgl';
 import 'xterm/css/xterm.css';
 
 const BAUD_RATES = [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600];
@@ -23,6 +22,7 @@ interface WebGLTerminalProps {
 export const WebGLTerminal: React.FC<WebGLTerminalProps> = ({ onPortSelect, onBaudSelect, onOutput, onConnectionChange }) => {
   const termRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
+  const disposeTimerRef = useRef<number | null>(null);
   const [selectedBaud, setSelectedBaud] = useState(115200);
   const [ports, setPorts] = useState<SerialPort[]>([]);
   const [selectedPort, setSelectedPort] = useState('');
@@ -34,6 +34,14 @@ export const WebGLTerminal: React.FC<WebGLTerminalProps> = ({ onPortSelect, onBa
   autoScrollRef.current = autoScroll;
   isPausedRef.current = isPaused;
   const [sendText, setSendText] = useState('');
+  const onOutputRef = useRef(onOutput);
+  const onConnectionChangeRef = useRef(onConnectionChange);
+  const onPortSelectRef = useRef(onPortSelect);
+  const onBaudSelectRef = useRef(onBaudSelect);
+  onOutputRef.current = onOutput;
+  onConnectionChangeRef.current = onConnectionChange;
+  onPortSelectRef.current = onPortSelect;
+  onBaudSelectRef.current = onBaudSelect;
 
   const refreshPorts = async () => {
     if ((window as any).cavallo?.listPorts) {
@@ -52,60 +60,76 @@ export const WebGLTerminal: React.FC<WebGLTerminalProps> = ({ onPortSelect, onBa
 
   useEffect(() => {
     if (!termRef.current) return;
-
-    const term = new Terminal({
-      cursorBlink: true,
-      fontSize: 13,
-      fontFamily: "'Cascadia Code', 'Fira Code', 'Consolas', monospace",
-      theme: {
-        background: '#1e1e1e',
-        foreground: '#d4d4d4',
-        cursor: '#aeafad',
-        selectionBackground: '#264f78',
-      },
-      scrollback: 10000,
-    });
-
-    term.open(termRef.current);
-
-    try {
-      const webgl = new WebglAddon();
-      term.loadAddon(webgl);
-    } catch (e) {
-      console.warn('WebGL addon fallback to canvas:', e);
+    if (disposeTimerRef.current !== null) {
+      window.clearTimeout(disposeTimerRef.current);
+      disposeTimerRef.current = null;
     }
+    let term = xtermRef.current;
+    if (!term) {
+      term = new Terminal({
+        cursorBlink: true,
+        fontSize: 13,
+        fontFamily: "'Cascadia Code', 'Fira Code', 'Consolas', monospace",
+        theme: {
+          background: '#1e1e1e',
+          foreground: '#d4d4d4',
+          cursor: '#aeafad',
+          selectionBackground: '#264f78',
+        },
+        scrollback: 10000,
+      });
+      term.open(termRef.current);
 
-    term.writeln('\x1b[32m╔══════════════════════════════════════════════════════════╗\x1b[0m');
-    term.writeln('\x1b[32m║   CavalloCode High-Performance Serial Monitor v1.0.0    ║\x1b[0m');
-    term.writeln('\x1b[32m╚══════════════════════════════════════════════════════════╝\x1b[0m');
-    term.writeln('\x1b[90mReady. Select target port and baud rate to connect.\x1b[0m\n');
-
-    xtermRef.current = term;
+      // Keep xterm's built-in renderer here. The WebGL addon currently fails
+      // while restoring the renderer during terminal disposal in Electron.
+      term.writeln('\x1b[32m╔══════════════════════════════════════════════════════════╗\x1b[0m');
+      term.writeln('\x1b[32m║   CavalloCode High-Performance Serial Monitor v1.0.0    ║\x1b[0m');
+      term.writeln('\x1b[32m╚══════════════════════════════════════════════════════════╝\x1b[0m');
+      term.writeln('\x1b[90mReady. Select target port and baud rate to connect.\x1b[0m\n');
+      xtermRef.current = term;
+    }
     void (window as any).cavallo?.getStatus?.().then((status: { connected: boolean; port: string; baudRate: number }) => {
       setIsConnected(status.connected);
-      onConnectionChange?.(status.connected);
-      if (status.port) { setSelectedPort(status.port); onPortSelect?.(status.port); }
-      if (status.baudRate) { setSelectedBaud(status.baudRate); onBaudSelect?.(status.baudRate); }
+      onConnectionChangeRef.current?.(status.connected);
+      if (status.port) { setSelectedPort(status.port); onPortSelectRef.current?.(status.port); }
+      if (status.baudRate) { setSelectedBaud(status.baudRate); onBaudSelectRef.current?.(status.baudRate); }
     }).catch((error: unknown) => console.warn('Failed to read serial status:', error));
 
     // Listen for incoming serial data from main process
     const removeDataListener = (window as any).cavallo?.onSerialData?.((chunk: string) => {
-      onOutput?.(chunk);
+      onOutputRef.current?.(chunk);
       if (!isPausedRef.current && xtermRef.current) {
         xtermRef.current.write(chunk);
         if (autoScrollRef.current) xtermRef.current.scrollToBottom();
       }
     });
-    const removeErrorListener = (window as any).api?.onSerialError?.((message: string) => { setIsConnected(false); onConnectionChange?.(false); term.writeln(`\r\n\x1b[31m[Serial error] ${message}\x1b[0m`); });
+    const removeErrorListener = (window as any).api?.onSerialError?.((message: string) => { setIsConnected(false); onConnectionChangeRef.current?.(false); term.writeln(`\r\n\x1b[31m[Serial error] ${message}\x1b[0m`); });
 
-    refreshPorts();
+    void refreshPortsRef.current();
+    let disposed = false;
+    let refreshFrame = 0;
+    const resizeObserver = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(([entry]) => {
+      if (entry.contentRect.width <= 0 || entry.contentRect.height <= 0) return;
+      cancelAnimationFrame(refreshFrame);
+      refreshFrame = requestAnimationFrame(() => { if (!disposed) term.refresh(0, term.rows - 1); });
+    });
+    if (termRef.current) resizeObserver?.observe(termRef.current);
 
     return () => {
-      term.dispose();
+      disposed = true;
+      cancelAnimationFrame(refreshFrame);
+      resizeObserver?.disconnect();
       removeDataListener?.();
       removeErrorListener?.();
+      disposeTimerRef.current = window.setTimeout(() => {
+        if (xtermRef.current === term) {
+          xtermRef.current = null;
+          term.dispose();
+        }
+        disposeTimerRef.current = null;
+      }, 0);
     };
-  }, [onOutput, onConnectionChange]);
+  }, []);
 
   const handleClear = () => {
     xtermRef.current?.clear();
@@ -125,6 +149,10 @@ export const WebGLTerminal: React.FC<WebGLTerminalProps> = ({ onPortSelect, onBa
     } else {
       if (!selectedPort) {
         term.writeln(`\n\x1b[31m[Error] No serial port selected. Connect a hardware board and retry.\x1b[0m\n`);
+        return;
+      }
+      if (!(window as any).cavallo?.connectSerial) {
+        term.writeln('\x1b[31m[Error] Serial connection API is unavailable. Restart the app and check its installation.\x1b[0m\n');
         return;
       }
       term.writeln(`\n\x1b[32m[Connecting] Opening ${selectedPort} @ ${selectedBaud} baud...\x1b[0m`);
@@ -261,7 +289,7 @@ export const WebGLTerminal: React.FC<WebGLTerminalProps> = ({ onPortSelect, onBa
       </div>
 
       {/* xterm.js Canvas */}
-      <div ref={termRef} style={{ flex: 1, overflow: 'hidden', padding: '4px' }} />
+      <div ref={termRef} style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden', padding: '4px' }} />
       <form onSubmit={async (event) => {
         event.preventDefault();
         if (!sendText || !isConnected) return;

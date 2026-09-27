@@ -150,6 +150,9 @@ importers:
       react-dom:
         specifier: ^19.2.1
         version: 19.2.8(react@19.2.8)
+      serialport:
+        specifier: ^13.0.0
+        version: 13.0.0(supports-color@7.2.0)
       terminal:
         specifier: workspace:*
         version: link:../../packages/terminal

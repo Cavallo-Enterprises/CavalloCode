@@ -40,7 +40,7 @@ export async function configureAI(config: AIConfig) {
 }
 
 function buildSystemPrompt(context: AIContext) {
-  return `You are Cavallo AI, an embedded hardware engineering copilot. Help with firmware, debugging, pinouts, and memory use. Be precise and call out assumptions.\n\nActive file: ${context.fileName}\nTarget board: ${context.board}\n\nActive code:\n${context.code}\n\nRecent serial/build output (last 50 lines):\n${context.logs.split(/\r?\n/).slice(-50).join('\n')}`
+  return `You are AI Assistant, an embedded hardware engineering copilot. Help with firmware, debugging, pinouts, and memory use. Be precise and call out assumptions.\n\nActive file: ${context.fileName}\nTarget board: ${context.board}\n\nActive code:\n${context.code}\n\nRecent serial/build output (last 50 lines):\n${context.logs.split(/\r?\n/).slice(-50).join('\n')}`
 }
 
 export async function askAI(prompt: string, context: AIContext) {

@@ -123,6 +123,8 @@ interface LayoutProps {
   activeBoard?: string;
   activePort?: string;
   activeBaud?: number;
+  onPortChange?: (port: string) => void;
+  onBaudChange?: (baud: number) => void;
   workspaceRoot?: string | null;
   workspaceFiles?: FileItem[];
   dirtyFileIds?: string[];
@@ -155,8 +157,10 @@ export const Layout = ({
   onCompile,
   onFlash,
   activeBoard = 'ESP32 Dev Module',
-  activePort = 'COM3',
+  activePort = '',
   activeBaud = 115200,
+  onPortChange,
+  onBaudChange,
   workspaceRoot: workspaceRootProp,
   workspaceFiles: workspaceFilesProp,
   dirtyFileIds: dirtyFileIdsProp,
@@ -193,6 +197,11 @@ export const Layout = ({
   const [aiInput, setAiInput] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
   const [aiConfig, setAiConfig] = useState<{ provider: 'openai' | 'gemini' | 'anthropic' | 'ollama'; apiKey: string; hasApiKey: boolean; model: string; endpoint: string }>({ provider: 'openai', apiKey: '', hasApiKey: false, model: 'gpt-4o-mini', endpoint: 'http://localhost:11434' });
+  const [settingsSection, setSettingsSection] = useState<'general' | 'appearance' | 'hardware' | 'ai' | 'extensions'>('general');
+  const [settingsMessage, setSettingsMessage] = useState('');
+  const [installedExtensions, setInstalledExtensions] = useState<Array<{ id: string; path: string; boards: Array<{ id: string; name: string }> }>>([]);
+  const [hardwarePorts, setHardwarePorts] = useState<Array<{ path: string; manufacturer?: string; vendorId?: string; productId?: string }>>([]);
+  const [portError, setPortError] = useState('');
   const [debugToolbarVisible, setDebugToolbarVisible] = useState(false);
   const [gdbPath, setGdbPath] = useState('');
   const [newProjectName, setNewProjectName] = useState('my-firmware')
@@ -200,6 +209,11 @@ export const Layout = ({
   const [projectError, setProjectError] = useState('')
 
   useEffect(() => { (window as any).api?.getAIConfig?.().then(setAiConfig).catch(console.warn); }, []);
+  useEffect(() => { (window as any).api?.getInstalledExtensions?.().then(setInstalledExtensions).catch(console.warn); }, []);
+  useEffect(() => {
+    if (activeActivity !== 'hardware') return;
+    void refreshHardwarePorts();
+  }, [activeActivity]);
   useEffect(() => { if (debugOutput) setDebugToolbarVisible(true); }, [debugOutput]);
 
   useEffect(() => {
@@ -215,6 +229,10 @@ export const Layout = ({
 
   const askAssistant = async (prompt: string) => {
     if (!onAskAI || aiBusy) return;
+    if (aiConfig.provider !== 'ollama' && !aiConfig.hasApiKey && !aiConfig.apiKey.trim()) {
+      setAiMessages((messages) => [...messages, { role: 'assistant', text: 'AI Assistant requires your own API key. Add it under Settings → AI Assistant. Local Ollama can be used without an API key.' }]);
+      return;
+    }
     setAiMessages((messages) => [...messages, { role: 'user', text: prompt }]);
     setAiBusy(true);
     try {
@@ -223,6 +241,27 @@ export const Layout = ({
     } catch (error: any) {
       setAiMessages((messages) => [...messages, { role: 'assistant', text: `Error: ${error?.message || error}` }]);
     } finally { setAiBusy(false); }
+  };
+
+  const refreshHardwarePorts = async () => {
+    setPortError('');
+    try {
+      const ports = await (window as any).cavallo?.listPorts?.();
+      setHardwarePorts(Array.isArray(ports) ? ports : []);
+    } catch (error: any) {
+      setPortError(error?.message || String(error));
+    }
+  };
+
+  const saveAIConfiguration = async () => {
+    try {
+      const result = await (window as any).api?.configureAI?.(aiConfig);
+      if (!result?.success) throw new Error('AI settings could not be saved.');
+      setAiConfig((current) => ({ ...current, apiKey: '', hasApiKey: current.provider === 'ollama' ? false : Boolean(current.apiKey || current.hasApiKey) }));
+      setSettingsMessage('AI Assistant settings saved securely.');
+    } catch (error: any) {
+      setSettingsMessage(error?.message || String(error));
+    }
   };
 
   const isDark = theme !== 'vs';
@@ -543,6 +582,7 @@ export const Layout = ({
               title="Serial Monitor & Output"
               onClick={() => {
                 setActiveActivity('serial');
+                setBottomTab('terminal');
                 setBottomOpen(true);
               }}
             />
@@ -555,7 +595,7 @@ export const Layout = ({
             <ActivityBarButton
               active={activeActivity === 'ai'}
               icon={<Bot size={22} />}
-              title="Cavallo AI Hardware Copilot"
+              title="AI Assistant"
               onClick={() => setActiveActivity('ai')}
             />
             <ActivityBarButton
@@ -612,7 +652,7 @@ export const Layout = ({
                     {activeActivity === 'hardware' && 'HARDWARE MANAGER'}
                     {activeActivity === 'serial' && 'SERIAL STATUS'}
                     {activeActivity === 'debug' && 'DEBUG & RUN'}
-                    {activeActivity === 'ai' && 'CAVALLO AI'}
+                    {activeActivity === 'ai' && 'AI ASSISTANT'}
                     {activeActivity === 'extensions' && 'EXTENSIONS'}
                     {activeActivity === 'settings' && 'SETTINGS'}
                   </span>
@@ -691,9 +731,12 @@ export const Layout = ({
                       </div>
                       <div>
                         <div style={{ color: '#888', marginBottom: 4 }}>COMMUNICATION PORT</div>
-                        <div style={{ padding: '6px 8px', background: '#1e1e1e', border: '1px solid #3c3c3c', color: '#fff' }}>
-                          📡 {activePort}
-                        </div>
+                        <select value={activePort} onFocus={() => void refreshHardwarePorts()} onChange={(event) => onPortChange?.(event.target.value)} style={debugInputStyle}>
+                          <option value="">Select a port</option>
+                          {hardwarePorts.map((port) => <option key={port.path} value={port.path}>{port.path} — {port.manufacturer || port.vendorId || 'Serial device'}</option>)}
+                        </select>
+                        <button onClick={() => void refreshHardwarePorts()} style={{ ...sidebarBtnStyle, background: '#3c3c3c', marginTop: 5 }}>Refresh Ports</button>
+                        {portError && <div style={{ color: '#f48771', marginTop: 4 }}>{portError}</div>}
                       </div>
                       <div>
                         <div style={{ color: '#888', marginBottom: 4 }}>FLASH BAUD RATE</div>
@@ -737,21 +780,24 @@ export const Layout = ({
 
                   {activeActivity === 'ai' && (
                     <div style={{ height: '100%', padding: 10, display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12, overflow: 'hidden' }}>
+                      {aiConfig.provider !== 'ollama' && !aiConfig.hasApiKey && !aiConfig.apiKey.trim() && <div role="status" style={{ padding: 9, background: '#3b3221', borderLeft: '3px solid #d7ba7d', lineHeight: 1.45 }}>
+                        AI Assistant uses your own API key. Add one in Settings to enable cloud providers. <button onClick={() => { setActiveActivity('settings'); setSettingsSection('ai'); }} style={{ ...sidebarBtnStyle, background: '#0e639c', marginTop: 6 }}>Open AI Settings</button>
+                      </div>}
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 5 }}>
-                        <button onClick={() => askAssistant('Diagnose the recent serial error or crash. Identify likely cause and concrete fixes.')} style={aiQuickButtonStyle}>🔍 Debug Serial Error</button>
-                        <button onClick={() => askAssistant('Review this firmware for pinout conflicts and RAM/Flash usage. Suggest safe optimizations.')} style={aiQuickButtonStyle}>⚡ Optimize Pinout & Memory</button>
-                        <button onClick={() => askAssistant('Generate reusable embedded driver boilerplate for the sensor or actuator described in the current conversation.')} style={aiQuickButtonStyle}>🛠️ Generate Driver Code</button>
+                        <button disabled={aiConfig.provider !== 'ollama' && !aiConfig.hasApiKey && !aiConfig.apiKey.trim()} onClick={() => askAssistant('Diagnose the recent serial error or crash. Identify likely cause and concrete fixes.')} style={aiQuickButtonStyle}>🔍 Debug Serial Error</button>
+                        <button disabled={aiConfig.provider !== 'ollama' && !aiConfig.hasApiKey && !aiConfig.apiKey.trim()} onClick={() => askAssistant('Review this firmware for pinout conflicts and RAM/Flash usage. Suggest safe optimizations.')} style={aiQuickButtonStyle}>⚡ Optimize Pinout & Memory</button>
+                        <button disabled={aiConfig.provider !== 'ollama' && !aiConfig.hasApiKey && !aiConfig.apiKey.trim()} onClick={() => askAssistant('Generate reusable embedded driver boilerplate for the sensor or actuator described in the current conversation.')} style={aiQuickButtonStyle}>🛠️ Generate Driver Code</button>
                       </div>
                       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {aiMessages.map((message, index) => <div key={index} style={{ padding: 8, background: message.role === 'assistant' ? '#1e1e1e' : '#263746', color: '#d4d4d4', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-                          <div style={{ color: message.role === 'assistant' ? '#4ec9b0' : '#9cdcfe', fontWeight: 600, marginBottom: 4 }}>{message.role === 'assistant' ? 'Cavallo AI' : 'You'}</div>
+                          <div style={{ color: message.role === 'assistant' ? '#4ec9b0' : '#9cdcfe', fontWeight: 600, marginBottom: 4 }}>{message.role === 'assistant' ? 'AI Assistant' : 'You'}</div>
                           <pre style={{ margin: 0, whiteSpace: 'pre-wrap', font: 'inherit' }}>{message.text}</pre>
                           {message.role === 'assistant' && <div style={{ display: 'flex', gap: 5, marginTop: 6 }}><button onClick={() => onInsertAI?.(message.text, 'insert')} style={iconBtnStyle}><Code2 size={12} /> Insert into Editor</button><button onClick={() => onInsertAI?.(message.text, 'apply')} style={iconBtnStyle}>Apply Fix</button></div>}
                         </div>)}
                         {!aiMessages.length && <div style={{ color: '#888', padding: 8 }}>Ask about firmware, boards, serial errors, or embedded drivers.</div>}
                       </div>
                       <form onSubmit={(event) => { event.preventDefault(); const prompt = aiInput.trim(); if (prompt) { setAiInput(''); void askAssistant(prompt); } }} style={{ display: 'flex', gap: 5 }}>
-                        <input value={aiInput} onChange={(event) => setAiInput(event.target.value)} placeholder={aiBusy ? 'Cavallo AI is responding…' : 'Ask Cavallo AI'} disabled={aiBusy} style={debugInputStyle} />
+                        <input value={aiInput} onChange={(event) => setAiInput(event.target.value)} placeholder={aiBusy ? 'AI Assistant is responding…' : 'Ask AI Assistant'} disabled={aiBusy || (aiConfig.provider !== 'ollama' && !aiConfig.hasApiKey && !aiConfig.apiKey.trim())} style={debugInputStyle} />
                         <button type="submit" disabled={aiBusy} style={{ ...iconBtnStyle, background: '#0e639c' }}><Send size={13} /></button>
                       </form>
                     </div>
@@ -759,41 +805,15 @@ export const Layout = ({
 
                   {activeActivity === 'extensions' && (
                     <div style={{ padding: '8px 12px', fontSize: '12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <div style={{ color: '#888', marginBottom: 2 }}>INSTALLED EXTENSIONS (3)</div>
-                      <ExtensionCard name="Espressif ESP32 Toolchain" ver="v1.0.0" arch="Xtensa / RISC-V" />
-                      <ExtensionCard name="Arduino AVR Core" ver="v1.0.0" arch="ATmega328P" />
-                      <ExtensionCard name="Raspberry Pi Pico SDK" ver="v1.0.0" arch="RP2040" />
+                      <div style={{ color: '#888', marginBottom: 2 }}>LOADED EXTENSIONS ({installedExtensions.length})</div>
+                      {installedExtensions.map((extension) => <ExtensionCard key={extension.id} name={extension.id} ver="Loaded" arch={extension.boards.map((board) => board.name).join(', ') || extension.path} />)}
+                      {!installedExtensions.length && <div style={{ color: '#888' }}>No extensions are currently loaded.</div>}
                     </div>
                   )}
 
                   {activeActivity === 'settings' && (
-                    <div style={{ padding: '8px 12px', fontSize: '12px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      <div>
-                        <div style={sectionTitleStyle}>CAVALLO AI PROVIDER</div>
-                        <select value={aiConfig.provider} onChange={(event) => setAiConfig({ ...aiConfig, provider: event.target.value as typeof aiConfig.provider })} style={debugInputStyle}>
-                          <option value="openai">OpenAI</option><option value="gemini">Google Gemini</option><option value="anthropic">Anthropic</option><option value="ollama">Local Ollama</option>
-                        </select>
-                        <input value={aiConfig.model} onChange={(event) => setAiConfig({ ...aiConfig, model: event.target.value })} placeholder="Model" style={{ ...debugInputStyle, marginTop: 5 }} />
-                        {aiConfig.provider === 'ollama' ? <input value={aiConfig.endpoint} onChange={(event) => setAiConfig({ ...aiConfig, endpoint: event.target.value })} placeholder="Ollama endpoint" style={{ ...debugInputStyle, marginTop: 5 }} /> : <input type="password" value={aiConfig.apiKey} onChange={(event) => setAiConfig({ ...aiConfig, apiKey: event.target.value })} placeholder={aiConfig.hasApiKey ? 'API key saved securely; enter to replace' : 'Provider API key'} style={{ ...debugInputStyle, marginTop: 5 }} />}
-                        <button onClick={() => (window as any).api?.configureAI?.(aiConfig)} style={{ ...sidebarBtnStyle, background: '#0e639c', marginTop: 6 }}>Save AI Settings</button>
-                      </div>
-                      <div>
-                        <div style={{ color: '#888', marginBottom: 4 }}>COLOR THEME</div>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <button
-                            onClick={() => onThemeChange('vs-dark')}
-                            style={{ ...sidebarBtnStyle, background: theme === 'vs-dark' ? '#007acc' : '#3c3c3c' }}
-                          >
-                            Dark
-                          </button>
-                          <button
-                            onClick={() => onThemeChange('vs')}
-                            style={{ ...sidebarBtnStyle, background: theme === 'vs' ? '#007acc' : '#3c3c3c' }}
-                          >
-                            Light
-                          </button>
-                        </div>
-                      </div>
+                    <div style={{ padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      {(['general', 'appearance', 'hardware', 'ai', 'extensions'] as const).map((section) => <button key={section} onClick={() => setSettingsSection(section)} style={{ ...settingsNavButtonStyle, background: settingsSection === section ? '#37373d' : 'transparent', borderLeft: settingsSection === section ? '2px solid #007acc' : '2px solid transparent' }}>{section === 'ai' ? 'AI Assistant' : section[0].toUpperCase() + section.slice(1)}</button>)}
                     </div>
                   )}
                 </div>
@@ -889,15 +909,29 @@ export const Layout = ({
                     </div>
 
                     {/* Monaco Editor Canvas */}
-                    <div style={{ flex: 1, width: '100%', overflow: 'hidden' }}>
-                      {children}
+                    <div style={{ flex: 1, minHeight: 0, minWidth: 0, width: '100%', overflow: 'hidden' }}>
+                      {activeActivity === 'settings' ? <SettingsPage
+                        section={settingsSection}
+                        onSectionChange={setSettingsSection}
+                        theme={theme}
+                        onThemeChange={onThemeChange}
+                        board={activeBoard}
+                        onBoardChange={(board) => onBoardChange?.(board)}
+                        baud={activeBaud}
+                        onBaudChange={(baud) => onBaudChange?.(baud)}
+                        workspaceRoot={workspaceRoot}
+                        aiConfig={aiConfig}
+                        onAIConfigChange={(config) => { setSettingsMessage(''); setAiConfig(config); }}
+                        onSaveAI={() => void saveAIConfiguration()}
+                        aiMessage={settingsMessage}
+                        extensions={installedExtensions}
+                      /> : children}
                     </div>
                   </div>
                 </Allotment.Pane>
 
                 {/* Bottom Panel (Collapsible: Terminal / Build Output) */}
-                {bottomOpen && (
-                  <Allotment.Pane minSize={100} preferredSize={240}>
+                <Allotment.Pane minSize={bottomOpen ? 100 : 0} preferredSize={bottomOpen ? 240 : 0} visible={bottomOpen}>
                     <div
                       style={{
                         height: '100%',
@@ -977,8 +1011,10 @@ export const Layout = ({
                       </div>
 
                       {/* Panel Content */}
-                      <div style={{ flex: 1, overflow: 'hidden' }}>
-                        {bottomTab === 'terminal' ? terminalComponent : bottomTab === 'plotter' ? plotterComponent : (
+                      <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', display: bottomTab === 'terminal' ? 'block' : 'none' }}><PanelErrorBoundary title="Serial Monitor">{terminalComponent}</PanelErrorBoundary></div>
+                        <div style={{ height: '100%', display: bottomTab === 'plotter' ? 'block' : 'none' }}><PanelErrorBoundary title="Serial Plotter">{plotterComponent}</PanelErrorBoundary></div>
+                        <div style={{ height: '100%', display: bottomTab === 'build' ? 'block' : 'none' }}>
                           <div
                             style={{
                               height: '100%',
@@ -994,11 +1030,10 @@ export const Layout = ({
                           >
                             {buildLogs}
                           </div>
-                        )}
+                        </div>
                       </div>
                     </div>
                   </Allotment.Pane>
-                )}
               </Allotment>
             </Allotment.Pane>
           </Allotment>
@@ -1145,6 +1180,105 @@ const debugInputStyle: React.CSSProperties = {
 const sectionTitleStyle: React.CSSProperties = { color: '#888', fontSize: 10, fontWeight: 700, letterSpacing: '0.5px', marginBottom: 5 };
 const debugPaneStyle: React.CSSProperties = { margin: 0, padding: 6, maxHeight: 100, overflow: 'auto', background: '#1e1e1e', color: '#ccc', whiteSpace: 'pre-wrap', fontSize: 11 };
 const aiQuickButtonStyle: React.CSSProperties = { textAlign: 'left', background: '#2d2d2d', color: '#ddd', border: '1px solid #3c3c3c', padding: '7px 8px', cursor: 'pointer', fontSize: 11 };
+const settingsNavButtonStyle: React.CSSProperties = { textAlign: 'left', background: 'transparent', color: '#d4d4d4', border: 'none', padding: '7px 9px', cursor: 'pointer', fontSize: 12 };
+
+interface SettingsPageProps {
+  section: 'general' | 'appearance' | 'hardware' | 'ai' | 'extensions';
+  onSectionChange: (section: SettingsPageProps['section']) => void;
+  theme: Theme;
+  onThemeChange: (theme: Theme) => void;
+  board: string;
+  onBoardChange: (board: string) => void;
+  baud: number;
+  onBaudChange: (baud: number) => void;
+  workspaceRoot: string | null;
+  aiConfig: { provider: 'openai' | 'gemini' | 'anthropic' | 'ollama'; apiKey: string; hasApiKey: boolean; model: string; endpoint: string };
+  onAIConfigChange: (config: SettingsPageProps['aiConfig']) => void;
+  onSaveAI: () => void;
+  aiMessage: string;
+  extensions: Array<{ id: string; path: string; boards: Array<{ id: string; name: string }> }>;
+}
+
+const SettingsPage: React.FC<SettingsPageProps> = (props) => {
+  const { section, onSectionChange, theme, onThemeChange, board, onBoardChange, baud, onBaudChange, workspaceRoot, aiConfig, onAIConfigChange, onSaveAI, aiMessage, extensions } = props;
+  const sections: Array<{ id: SettingsPageProps['section']; title: string }> = [
+    { id: 'general', title: 'General' }, { id: 'appearance', title: 'Appearance' },
+    { id: 'hardware', title: 'Hardware' }, { id: 'ai', title: 'AI Assistant' }, { id: 'extensions', title: 'Extensions' },
+  ];
+  const inputStyle: React.CSSProperties = { width: '100%', maxWidth: 520, boxSizing: 'border-box', background: '#3c3c3c', color: '#ddd', border: '1px solid #555', padding: '7px 9px', fontSize: 13 };
+  const fieldStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 560, margin: '18px 0' };
+  const heading = sections.find((item) => item.id === section)?.title || 'General';
+  return <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#1e1e1e', color: '#d4d4d4', overflow: 'hidden' }}>
+    <header style={{ padding: '18px 24px 12px', borderBottom: '1px solid #333', flexShrink: 0 }}>
+      <div style={{ fontSize: 19, fontWeight: 500 }}>Settings</div>
+      <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>Preferences for your workspace and hardware toolchain</div>
+    </header>
+    <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+      <nav aria-label="Settings categories" style={{ width: 190, flexShrink: 0, padding: 12, borderRight: '1px solid #333', overflowY: 'auto' }}>
+        {sections.map((item) => <button key={item.id} onClick={() => onSectionChange(item.id)} style={{ ...settingsNavButtonStyle, width: '100%', background: section === item.id ? '#37373d' : 'transparent', borderLeft: section === item.id ? '2px solid #007acc' : '2px solid transparent' }}>{item.title}</button>)}
+      </nav>
+      <main style={{ flex: 1, minWidth: 0, padding: '20px 28px', overflow: 'auto' }}>
+        <h2 style={{ fontSize: 17, fontWeight: 500, margin: '0 0 16px' }}>{heading}</h2>
+        {section === 'general' && <>
+          <div style={sectionTitleStyle}>WORKSPACE</div>
+          <label style={fieldStyle}>Current folder<input readOnly value={workspaceRoot || 'No folder opened'} style={inputStyle} /></label>
+          <div style={{ color: '#999', fontSize: 12, maxWidth: 560 }}>Use File → Open Folder to load a local firmware project. Files open in the editor and can be saved with Ctrl+S / Cmd+S.</div>
+          <div style={{ ...sectionTitleStyle, marginTop: 28 }}>DEFAULT TARGET</div>
+          <label style={fieldStyle}>Board<select value={board} onChange={(event) => onBoardChange(event.target.value)} style={inputStyle}><option>ESP32 Dev Module</option><option>Arduino Uno</option><option>Arduino Nano</option><option>Raspberry Pi Pico</option></select></label>
+        </>}
+        {section === 'appearance' && <>
+          <div style={sectionTitleStyle}>COLOR THEME</div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            {(['vs-dark', 'vs', 'hc-black'] as const).map((value) => <button key={value} onClick={() => onThemeChange(value)} style={{ ...iconBtnStyle, background: theme === value ? '#0e639c' : '#333', padding: '8px 14px' }}>{value === 'vs-dark' ? 'Dark' : value === 'vs' ? 'Light' : 'High Contrast'}</button>)}
+          </div>
+          <p style={{ color: '#999', fontSize: 12 }}>Editor and workbench theme.</p>
+        </>}
+        {section === 'hardware' && <>
+          <div style={sectionTitleStyle}>DEFAULT SERIAL SETTINGS</div>
+          <label style={fieldStyle}>Target board<select value={board} onChange={(event) => onBoardChange(event.target.value)} style={inputStyle}><option>ESP32 Dev Module</option><option>Arduino Uno</option><option>Arduino Nano</option><option>Raspberry Pi Pico</option></select></label>
+          <label style={fieldStyle}>Monitor baud rate<select value={baud} onChange={(event) => onBaudChange(Number(event.target.value))} style={inputStyle}>{[9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600].map((rate) => <option key={rate} value={rate}>{rate}</option>)}</select></label>
+          <div style={{ color: '#999', fontSize: 12, maxWidth: 560 }}>Choose a detected serial port in Hardware Manager or Serial Monitor. Compile and Upload actions use the selected board and port.</div>
+        </>}
+        {section === 'ai' && <>
+          <div style={{ maxWidth: 560, padding: 10, background: '#252526', borderLeft: '3px solid #007acc', fontSize: 12, lineHeight: 1.5 }}>AI Assistant does not include a hosted AI account or API key. Enter your own provider key below, or use a local Ollama server.</div>
+          <label style={fieldStyle}>Provider<select value={aiConfig.provider} onChange={(event) => onAIConfigChange({ ...aiConfig, provider: event.target.value as typeof aiConfig.provider, apiKey: '', hasApiKey: false })} style={inputStyle}><option value="openai">OpenAI</option><option value="gemini">Google Gemini</option><option value="anthropic">Anthropic</option><option value="ollama">Local Ollama</option></select></label>
+          <label style={fieldStyle}>Model<input value={aiConfig.model} onChange={(event) => onAIConfigChange({ ...aiConfig, model: event.target.value })} placeholder={aiConfig.provider === 'ollama' ? 'llama3.2' : 'Provider model ID'} style={inputStyle} /></label>
+          {aiConfig.provider === 'ollama' ? <label style={fieldStyle}>Ollama endpoint<input value={aiConfig.endpoint} onChange={(event) => onAIConfigChange({ ...aiConfig, endpoint: event.target.value })} placeholder="http://localhost:11434" style={inputStyle} /></label> : <label style={fieldStyle}>Your API key<input type="password" value={aiConfig.apiKey} onChange={(event) => onAIConfigChange({ ...aiConfig, apiKey: event.target.value })} placeholder={aiConfig.hasApiKey ? 'Key saved securely; enter to replace' : 'Paste your own API key'} style={inputStyle} /></label>}
+          <button onClick={onSaveAI} style={{ ...iconBtnStyle, background: '#0e639c', padding: '7px 14px' }}>Save AI Settings</button>
+          {aiConfig.provider !== 'ollama' && <div style={{ color: aiConfig.hasApiKey ? '#4ec9b0' : '#d7ba7d', fontSize: 12, marginTop: 8 }}>{aiConfig.hasApiKey ? 'An API key is saved in OS secure storage.' : 'A personal API key is required to use this provider.'}</div>}
+          {aiMessage && <div role="status" style={{ color: aiMessage.includes('saved') ? '#4ec9b0' : '#f48771', fontSize: 12, marginTop: 8 }}>{aiMessage}</div>}
+        </>}
+        {section === 'extensions' && <>
+          <div style={sectionTitleStyle}>LOADED EXTENSIONS</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12, maxWidth: 640 }}>
+            {extensions.map((extension) => <ExtensionCard key={extension.id} name={extension.id} ver="Loaded" arch={extension.boards.map((item) => item.name).join(', ') || extension.path} />)}
+            {!extensions.length && <div style={{ color: '#999', fontSize: 12 }}>No extensions are loaded.</div>}
+          </div>
+          <p style={{ color: '#999', fontSize: 12, maxWidth: 640 }}>Built-in hardware extensions are activated when CavalloCode starts and contribute board/toolchain support.</p>
+        </>}
+      </main>
+    </div>
+  </div>;
+};
+
+interface PanelErrorBoundaryProps { title: string; children?: React.ReactNode }
+interface PanelErrorBoundaryState { error: string | null }
+class PanelErrorBoundary extends React.Component<PanelErrorBoundaryProps, PanelErrorBoundaryState> {
+  state: PanelErrorBoundaryState = { error: null };
+  private readonly panelTitle: string;
+  private readonly panelContent?: React.ReactNode;
+  constructor(props: PanelErrorBoundaryProps) {
+    super(props);
+    this.panelTitle = props.title;
+    this.panelContent = props.children;
+  }
+  static getDerivedStateFromError(error: Error): PanelErrorBoundaryState { return { error: error.message }; }
+  componentDidCatch(error: Error) { console.error(`[${this.panelTitle}] panel failed to render`, error); }
+  render() {
+    if (this.state.error) return <div role="alert" style={{ padding: 16, color: '#f48771', background: '#1e1e1e', fontSize: 12 }}>Could not render {this.panelTitle}: {this.state.error}</div>;
+    return this.panelContent;
+  }
+}
 
 function winControlBtnStyle(): React.CSSProperties {
   return {
