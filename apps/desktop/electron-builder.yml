@@ -44,3 +44,4 @@ publish:
   provider: github
   owner: Cavallo-Enterprises
   repo: CavalloCode
+  releaseType: release
