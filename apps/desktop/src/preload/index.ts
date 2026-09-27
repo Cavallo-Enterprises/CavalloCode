@@ -53,6 +53,24 @@ const api = {
     return () => ipcRenderer.removeListener('hardware:build-log', listener)
   },
 
+  startDebug: (targetElf: string, gdbPath?: string, breakpoints?: Array<{ file: string; line: number }>) => ipcRenderer.invoke('debug:start', targetElf, gdbPath, breakpoints),
+  debugStepOver: () => ipcRenderer.invoke('debug:step-over'),
+  debugStepInto: () => ipcRenderer.invoke('debug:step-into'),
+  debugStepOut: () => ipcRenderer.invoke('debug:step-out'),
+  debugContinue: () => ipcRenderer.invoke('debug:continue'),
+  debugPause: () => ipcRenderer.invoke('debug:pause'),
+  debugRestart: () => ipcRenderer.invoke('debug:restart'),
+  debugStop: () => ipcRenderer.invoke('debug:stop'),
+  debugEvaluate: (expression: string) => ipcRenderer.invoke('debug:evaluate', expression),
+  onDebugOutput: (callback: (event: { stream: string; text: string }) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, data: { stream: string; text: string }) => callback(data)
+    ipcRenderer.on('debug:output', listener)
+    return () => ipcRenderer.removeListener('debug:output', listener)
+  },
+  getAIConfig: () => ipcRenderer.invoke('ai:get-config'),
+  configureAI: (config: { provider: 'openai' | 'gemini' | 'anthropic' | 'ollama'; apiKey: string; model: string; endpoint: string }) => ipcRenderer.invoke('ai:configure', config),
+  askAI: (prompt: string, context: { code: string; fileName: string; board: string; logs: string }) => ipcRenderer.invoke('ai:ask', prompt, context),
+
   // Extension host
   getInstalledExtensions: () => ipcRenderer.invoke('ext:list'),
 }

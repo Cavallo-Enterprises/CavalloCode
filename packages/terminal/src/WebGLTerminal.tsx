@@ -16,9 +16,10 @@ interface SerialPort {
 interface WebGLTerminalProps {
   onPortSelect?: (port: string) => void;
   onBaudSelect?: (baud: number) => void;
+  onOutput?: (chunk: string) => void;
 }
 
-export const WebGLTerminal: React.FC<WebGLTerminalProps> = ({ onPortSelect, onBaudSelect }) => {
+export const WebGLTerminal: React.FC<WebGLTerminalProps> = ({ onPortSelect, onBaudSelect, onOutput }) => {
   const termRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const [selectedBaud, setSelectedBaud] = useState(115200);
@@ -82,6 +83,7 @@ export const WebGLTerminal: React.FC<WebGLTerminalProps> = ({ onPortSelect, onBa
 
     // Listen for incoming serial data from main process
     const removeDataListener = (window as any).cavallo?.onSerialData?.((chunk: string) => {
+      onOutput?.(chunk);
       if (!isPausedRef.current && xtermRef.current) {
         xtermRef.current.write(chunk);
         if (autoScrollRef.current) xtermRef.current.scrollToBottom();
@@ -96,7 +98,7 @@ export const WebGLTerminal: React.FC<WebGLTerminalProps> = ({ onPortSelect, onBa
       removeDataListener?.();
       removeErrorListener?.();
     };
-  }, []);
+  }, [onOutput]);
 
   const handleClear = () => {
     xtermRef.current?.clear();

@@ -6,6 +6,8 @@ import icon from '../../resources/icon.png?asset'
 import { fork, ChildProcess } from 'child_process'
 import { compileProject, flashArduino, flashESP32, hardwareBuildEvents } from '../../../../packages/hardware-bridge/src/index'
 import { connectSerial, disconnectSerial, listPorts, sendSerialData, serialEvents } from '../../../../packages/hardware-bridge/src/serial'
+import { debugContinue, debugEvaluate, debugPause, debugRestart, debugStepInto, debugStepOut, debugStepOver, debuggerEvents, startGDB, stopGDB } from '../../../../packages/hardware-bridge/src/debugger'
+import { askAI, configureAI, getAIConfig, initializeAIService } from './aiService'
 
 
 let extensionHostProcess: ChildProcess | null = null;
@@ -97,6 +99,7 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.cavallocode')
+  initializeAIService(join(app.getPath('userData'), 'ai-settings.json'))
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
@@ -134,6 +137,21 @@ app.whenReady().then(() => {
   serialEvents.on('error', (message: string) => {
     for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) window.webContents.send('serial:error', message)
   })
+  debuggerEvents.on('output', (data: { stream: string; text: string }) => {
+    for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) window.webContents.send('debug:output', data)
+  })
+  ipcMain.handle('debug:start', (_event, elf: string, gdbPath?: string, breakpoints?: Array<{ file: string; line: number }>) => startGDB(elf, gdbPath, breakpoints))
+  ipcMain.handle('debug:step-over', () => debugStepOver())
+  ipcMain.handle('debug:step-into', () => debugStepInto())
+  ipcMain.handle('debug:step-out', () => debugStepOut())
+  ipcMain.handle('debug:continue', () => debugContinue())
+  ipcMain.handle('debug:pause', () => debugPause())
+  ipcMain.handle('debug:restart', () => debugRestart())
+  ipcMain.handle('debug:stop', () => stopGDB())
+  ipcMain.handle('debug:evaluate', (_event, expression: string) => debugEvaluate(expression))
+  ipcMain.handle('ai:get-config', () => getAIConfig())
+  ipcMain.handle('ai:configure', (_event, config) => configureAI(config))
+  ipcMain.handle('ai:ask', (_event, prompt: string, context) => askAI(prompt, context))
 
   ipcMain.handle('ext:list', async () => {
     return [

@@ -29,6 +29,19 @@ declare global {
     flashESP32(port: string, binPath: string): Promise<{ success: boolean; output: string }>
     flashArduino(board: 'uno' | 'nano', port: string, hexPath: string): Promise<{ success: boolean; output: string }>
     onHardwareBuildLog(callback: (line: string) => void): () => void
+    startDebug(targetElf: string, gdbPath?: string, breakpoints?: Array<{ file: string; line: number }>): Promise<{ success: boolean; elf: string }>
+    debugStepOver(): Promise<{ success: boolean; error?: string }>
+    debugStepInto(): Promise<{ success: boolean; error?: string }>
+    debugStepOut(): Promise<{ success: boolean; error?: string }>
+    debugContinue(): Promise<{ success: boolean; error?: string }>
+    debugPause(): Promise<{ success: boolean; error?: string }>
+    debugRestart(): Promise<{ success: boolean; error?: string }>
+    debugStop(): Promise<{ success: boolean }>
+    debugEvaluate(expression: string): Promise<{ success: boolean; error?: string }>
+    onDebugOutput(callback: (event: { stream: string; text: string }) => void): () => void
+    getAIConfig(): Promise<{ provider: 'openai' | 'gemini' | 'anthropic' | 'ollama'; apiKey: string; model: string; endpoint: string }>
+    configureAI(config: { provider: 'openai' | 'gemini' | 'anthropic' | 'ollama'; apiKey: string; model: string; endpoint: string }): Promise<{ success: boolean }>
+    askAI(prompt: string, context: { code: string; fileName: string; board: string; logs: string }): Promise<string>
     [key: string]: any
   }
 

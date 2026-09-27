@@ -58,6 +58,9 @@ interface MonacoEditorProps {
   theme?: Theme;
   onThemeChange?: (theme: Theme) => void;
   showToolbar?: boolean;
+  breakpointFile?: string;
+  breakpoints?: Array<{ file: string; line: number }>;
+  onBreakpointsChange?: (breakpoints: Array<{ file: string; line: number }>) => void;
 }
 
 class EditorErrorBoundary extends Component<{ children: ReactNode; fallbackValue: string; onChange: (v: string) => void }, { hasError: boolean }> {
@@ -100,9 +103,16 @@ export const CavalloMonacoEditor: React.FC<MonacoEditorProps> = ({
   theme = 'vs-dark',
   onThemeChange,
   showToolbar = false,
+  breakpointFile = 'active-file',
+  breakpoints = [],
+  onBreakpointsChange,
 }) => {
   const [internalLanguage, setInternalLanguage] = useState<Language>('cpp');
   const [internalCode, setInternalCode] = useState<string>(DEFAULT_CODE['cpp']);
+  const editorRef = React.useRef<any>(null);
+  const breakpointDecorations = React.useRef<string[]>([]);
+  const breakpointsRef = React.useRef(breakpoints);
+  breakpointsRef.current = breakpoints;
 
   const activeLanguage = propLanguage || internalLanguage;
   const activeCode = value !== undefined ? value : internalCode;
@@ -126,14 +136,36 @@ export const CavalloMonacoEditor: React.FC<MonacoEditorProps> = ({
   };
 
   const handleEditorDidMount = (editor: any) => {
+    editorRef.current = editor;
     editor.onDidChangeCursorPosition((e: any) => {
       onCursorChange?.(e.position.lineNumber, e.position.column);
     });
+    editor.onMouseDown((event: any) => {
+      const gutterTypes = [monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN, monaco.editor.MouseTargetType.GUTTER_LINE_NUMBERS];
+      const line = event.target.position?.lineNumber;
+      if (!line || !gutterTypes.includes(event.target.type)) return;
+      const current = breakpointsRef.current;
+      const next = current.some((point) => point.file === breakpointFile && point.line === line)
+        ? current.filter((point) => point.file !== breakpointFile || point.line !== line)
+        : [...current, { file: breakpointFile, line }];
+      onBreakpointsChange?.(next);
+    });
   };
+
+  React.useEffect(() => {
+    if (!editorRef.current) return;
+    breakpointDecorations.current = editorRef.current.deltaDecorations(breakpointDecorations.current, breakpoints
+      .filter((point) => point.file === breakpointFile)
+      .map((point) => ({
+        range: new monaco.Range(point.line, 1, point.line, 1),
+        options: { isWholeLine: true, glyphMarginClassName: 'cavallo-breakpoint-glyph' }
+      })));
+  }, [breakpoints, breakpointFile]);
 
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden' }}>
+      <style>{`.monaco-editor .cavallo-breakpoint-glyph { background: #e51400; border-radius: 50%; width: 10px !important; height: 10px !important; margin-left: 5px; margin-top: 4px; }`}</style>
       {/* Optional Editor Toolbar */}
       {showToolbar && (
         <div
@@ -205,6 +237,7 @@ export const CavalloMonacoEditor: React.FC<MonacoEditorProps> = ({
               automaticLayout: true,
               tabSize: 2,
               lineNumbers: 'on',
+              glyphMargin: true,
               folding: true,
               bracketPairColorization: { enabled: true },
             }}

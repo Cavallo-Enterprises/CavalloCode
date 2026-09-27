@@ -17,3 +17,19 @@ export interface CavalloPlugin {
   registerBoard?(): CavalloBoardDefinition[];
   uploadHandler?(port: string, file: string): Promise<boolean>;
 }
+
+export type CavalloAIProvider = 'openai' | 'gemini' | 'anthropic' | 'ollama';
+
+export interface CavalloAIContext {
+  code: string;
+  fileName: string;
+  board: string;
+  logs: string;
+}
+
+export interface CavalloAIConfiguration {
+  provider: CavalloAIProvider;
+  apiKey: string;
+  model: string;
+  endpoint: string;
+}

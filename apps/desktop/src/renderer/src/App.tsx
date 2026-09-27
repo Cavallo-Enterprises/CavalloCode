@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Layout, CavalloMonacoEditor, DEFAULT_PROJECT_FILES, FileItem, Theme } from 'core-ui/src/index';
 import { SerialMonitor, SerialPlotter } from 'terminal/src/index';
 
@@ -19,6 +19,38 @@ function App(): JSX.Element {
   const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null);
   const [workspaceFiles, setWorkspaceFiles] = useState<FileItem[]>(DEFAULT_PROJECT_FILES);
   const [dirtyFileIds, setDirtyFileIds] = useState<string[]>([]);
+  const [breakpoints, setBreakpoints] = useState<Array<{ file: string; line: number }>>([]);
+  const [debugOutput, setDebugOutput] = useState('');
+  const [recentLogs, setRecentLogs] = useState('');
+
+  useEffect(() => window.api.onDebugOutput((event) => setDebugOutput((current) => (current + event.text).slice(-20000))), []);
+
+  const appendRecentLog = useCallback((line: string) => setRecentLogs((current) => `${current}${line}\n`.split(/\r?\n/).slice(-50).join('\n')), []);
+  const subscribeHardwareLogs = useCallback((callback: (line: string) => void) => window.api.onHardwareBuildLog((line) => { appendRecentLog(line); callback(line); }), [appendRecentLog]);
+  const handleAskAI = useCallback((prompt: string) => window.api.askAI(prompt, {
+    code: fileContents[activeFile.id] ?? activeFile.content,
+    fileName: activeFile.name,
+    board: activeBoard,
+    logs: recentLogs,
+  }), [activeFile, activeBoard, fileContents, recentLogs]);
+  const handleInsertAI = (answer: string) => {
+    const code = answer.match(/```(?:[\w+-]+)?\s*([\s\S]*?)```/)?.[1]?.trim() || answer;
+    setFileContents((current) => ({ ...current, [activeFile.id]: code }));
+    setDirtyFileIds((current) => current.includes(activeFile.id) ? current : [...current, activeFile.id]);
+  };
+
+  const handleDebugAction = (action: string) => {
+    const actions: Record<string, () => Promise<unknown>> = {
+      continue: window.api.debugContinue,
+      pause: window.api.debugPause,
+      'step-over': window.api.debugStepOver,
+      'step-into': window.api.debugStepInto,
+      'step-out': window.api.debugStepOut,
+      restart: window.api.debugRestart,
+      stop: window.api.debugStop,
+    };
+    void actions[action]?.();
+  };
 
   const loadWorkspace = useCallback(async (root: string) => {
     const files: FileItem[] = [];
@@ -88,7 +120,18 @@ function App(): JSX.Element {
       }}
       onSaveFile={saveActiveFile}
       onOpenFile={openWorkspaceFile}
-      onHardwareLog={window.api.onHardwareBuildLog}
+      onHardwareLog={subscribeHardwareLogs}
+      debugOutput={debugOutput}
+      onDebugAction={handleDebugAction}
+      onStartDebug={() => {
+        const root = workspaceRoot || '.';
+        const elf = `${root}/.pio/build/${/pico|rp2040/i.test(activeBoard) ? 'pico' : 'esp32dev'}/firmware.elf`;
+        const gdb = /esp32/i.test(activeBoard) ? 'xtensa-esp32-elf-gdb' : 'arm-none-eabi-gdb';
+        void window.api.startDebug(elf, gdb, breakpoints);
+        setDebugOutput((current) => `${current}\nStarting ${gdb} for ${elf}…\n`);
+      }}
+      onAskAI={handleAskAI}
+      onInsertAI={handleInsertAI}
       onCompile={async () => {
         const result = await window.api.compileProject(workspaceRoot || '.');
         if (!result.success) throw new Error('PlatformIO compilation failed.');
@@ -113,6 +156,7 @@ function App(): JSX.Element {
         <SerialMonitor
           onPortSelect={(p) => setActivePort(p)}
           onBaudSelect={(b) => setActiveBaud(b)}
+          onOutput={appendRecentLog}
         />
       }
       plotterComponent={<SerialPlotter />}
@@ -124,6 +168,9 @@ function App(): JSX.Element {
         onCursorChange={(line, col) => setCursorPos({ line, col })}
         theme={theme}
         onThemeChange={setTheme}
+        breakpointFile={activeFile.path}
+        breakpoints={breakpoints}
+        onBreakpointsChange={setBreakpoints}
       />
     </Layout>
   );
