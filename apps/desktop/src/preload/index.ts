@@ -76,6 +76,14 @@ const api = {
   configureAI: (config: { provider: 'openai' | 'gemini' | 'anthropic' | 'ollama'; apiKey: string; model: string; endpoint: string }) => ipcRenderer.invoke('ai:configure', config),
   askAI: (prompt: string, context: { code: string; fileName: string; board: string; logs: string }) => ipcRenderer.invoke('ai:ask', prompt, context),
 
+  checkForUpdates: () => ipcRenderer.invoke('updater:check'),
+  restartAndInstallUpdate: () => ipcRenderer.invoke('updater:restart-and-install'),
+  onUpdaterEvent: (channel: 'updater:checking-for-update' | 'updater:update-available' | 'updater:update-not-available' | 'updater:download-progress' | 'updater:update-downloaded' | 'updater:error', callback: (payload?: unknown) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload?: unknown) => callback(payload)
+    ipcRenderer.on(channel, listener)
+    return () => ipcRenderer.removeListener(channel, listener)
+  },
+
   // Extension host
   getInstalledExtensions: () => ipcRenderer.invoke('ext:list'),
 }

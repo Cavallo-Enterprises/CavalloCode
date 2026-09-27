@@ -1,8 +1,9 @@
-appId: com.cavallocode.app
+appId: com.cavallo.ide
 productName: CavalloCode
 copyright: Copyright © 2026 Cavallo-Enterprises
 directories:
   buildResources: build
+  output: dist
 files:
   - '!**/.vscode/*'
   - '!src/*'
@@ -15,6 +16,7 @@ asarUnpack:
 win:
   executableName: CavalloCode
   icon: resources/icon.png
+  target: nsis
 nsis:
   artifactName: CavalloCode-${version}-setup.${ext}
   shortcutName: CavalloCode
@@ -32,15 +34,13 @@ mac:
 dmg:
   artifactName: ${name}-${version}.${ext}
 linux:
-  target:
-    - AppImage
-    - snap
-    - deb
+  target: AppImage
   maintainer: electronjs.org
   category: Utility
 appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
 publish:
-  provider: generic
-  url: https://example.com/auto-updates
+  provider: github
+  owner: Cavallo-Enterprises
+  repo: CavalloCode

@@ -47,6 +47,9 @@ declare global {
     getAIConfig(): Promise<{ provider: 'openai' | 'gemini' | 'anthropic' | 'ollama'; apiKey: string; hasApiKey: boolean; model: string; endpoint: string }>
     configureAI(config: { provider: 'openai' | 'gemini' | 'anthropic' | 'ollama'; apiKey: string; model: string; endpoint: string }): Promise<{ success: boolean }>
     askAI(prompt: string, context: { code: string; fileName: string; board: string; logs: string }): Promise<string>
+    checkForUpdates(): Promise<unknown>
+    restartAndInstallUpdate(): Promise<{ success: boolean }>
+    onUpdaterEvent(channel: 'updater:checking-for-update' | 'updater:update-available' | 'updater:update-not-available' | 'updater:download-progress' | 'updater:update-downloaded' | 'updater:error', callback: (payload?: unknown) => void): () => void
     [key: string]: any
   }
 

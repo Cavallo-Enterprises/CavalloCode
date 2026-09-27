@@ -1,0 +1,52 @@
+name: Build and publish releases
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            builder-target: --win
+          - os: macos-latest
+            builder-target: --mac
+          - os: ubuntu-latest
+            builder-target: --linux
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.3.4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm --filter desktop typecheck
+
+      - name: Build application
+        run: pnpm --filter desktop build
+
+      - name: Package and publish GitHub Release
+        run: pnpm --filter desktop exec electron-builder ${{ matrix.builder-target }} --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

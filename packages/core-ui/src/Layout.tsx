@@ -339,7 +339,7 @@ export const Layout = ({
     Hardware: ['Compile / Verify', 'Upload / Flash', 'Auto-Detect Ports', 'Select Board'],
     Run: ['Start Debugging', 'Run Without Debugging'],
     Terminal: ['New Terminal', 'Clear Terminal', 'Kill Terminal'],
-    Help: ['Documentation', 'About CavalloCode']
+    Help: ['Check for Updates...', 'Documentation', 'About CavalloCode']
   };
 
   return (
@@ -429,6 +429,7 @@ export const Layout = ({
                         if (item === 'Auto-Detect Ports') { setActiveActivity('serial'); setBottomTab('terminal'); setBottomOpen(true); window.setTimeout(() => window.dispatchEvent(new Event('cavallo:refresh-ports')), 0); }
                         if (item === 'Serial Monitor') { setActiveActivity('serial'); setBottomOpen(true); setBottomTab('terminal'); }
                         if (item === 'Select Theme' || item === 'Theme') setActiveActivity('settings');
+                        if (item === 'Check for Updates...') void (window as any).api?.checkForUpdates?.();
                       }}
                       style={{
                         padding: '6px 14px',

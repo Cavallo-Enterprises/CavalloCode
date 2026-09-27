@@ -7,6 +7,7 @@ import { compileProject, flashArduino, flashESP32, flashHardware, hardwareBuildE
 import { connectSerial, disconnectSerial, getSerialStatus, listPorts, sendSerialData, serialEvents } from '../../../../packages/hardware-bridge/src/serial'
 import { debugContinue, debugEvaluate, debugPause, debugRestart, debugSetBreakpoints, debugStepInto, debugStepOut, debugStepOver, debuggerEvents, startGDB, stopGDB } from '../../../../packages/hardware-bridge/src/debugger'
 import { askAI, configureAI, getAIConfig, initializeAIService } from './aiService'
+import { initializeUpdater } from './updater'
 import { createProjectTemplate, ProjectTemplate } from '../../../../packages/hardware-bridge/src/templates'
 import { ExtensionHostManager } from '../../../../packages/extension-host/src/host'
 import esp32Plugin from '../../../../extensions/builtin-esp32/src/index'
@@ -87,8 +88,9 @@ function createWindow(): void {
 
 
 app.whenReady().then(async () => {
-  electronApp.setAppUserModelId('com.cavallocode')
+  electronApp.setAppUserModelId('com.cavallo.ide')
   initializeAIService(join(app.getPath('userData'), 'ai-settings.json'))
+  initializeUpdater()
   await Promise.all([
     extensionHost.registerPlugin('builtin-esp32', esp32Plugin, 'builtin:esp32'),
     extensionHost.registerPlugin('builtin-arduino', arduinoPlugin, 'builtin:arduino'),

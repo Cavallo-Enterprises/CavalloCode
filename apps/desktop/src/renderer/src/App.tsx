@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
-import { Layout, CavalloMonacoEditor, DEFAULT_PROJECT_FILES, FileItem, Theme } from 'core-ui/src/index';
+import { Layout, CavalloMonacoEditor, DEFAULT_PROJECT_FILES, FileItem, Theme, UpdateNotifier } from 'core-ui/src/index';
 import { SerialMonitor, SerialPlotter } from 'terminal/src/index';
 
 function App(): ReactElement {
@@ -119,6 +119,7 @@ function App(): ReactElement {
   };
 
   return (
+    <>
     <Layout
       theme={theme}
       onThemeChange={setTheme}
@@ -206,6 +207,8 @@ function App(): ReactElement {
         onBreakpointsChange={setBreakpoints}
       />
     </Layout>
+    <UpdateNotifier />
+    </>
   );
 }
 
