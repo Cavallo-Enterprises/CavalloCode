@@ -1,7 +1,7 @@
-import { CavalloPlugin, CavalloBoardDefinition } from '../../packages/plugin-api/src/index.js';
+import type { CavalloPlugin, CavalloBoardDefinition } from '../../../packages/plugin-api/src/index';
 
 const esp32Plugin: CavalloPlugin = {
-  activate(context) {
+  activate() {
     console.log('ESP32 extension activated');
   },
   deactivate() {

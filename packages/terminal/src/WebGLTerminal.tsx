@@ -17,9 +17,10 @@ interface WebGLTerminalProps {
   onPortSelect?: (port: string) => void;
   onBaudSelect?: (baud: number) => void;
   onOutput?: (chunk: string) => void;
+  onConnectionChange?: (connected: boolean) => void;
 }
 
-export const WebGLTerminal: React.FC<WebGLTerminalProps> = ({ onPortSelect, onBaudSelect, onOutput }) => {
+export const WebGLTerminal: React.FC<WebGLTerminalProps> = ({ onPortSelect, onBaudSelect, onOutput, onConnectionChange }) => {
   const termRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const [selectedBaud, setSelectedBaud] = useState(115200);
@@ -80,6 +81,12 @@ export const WebGLTerminal: React.FC<WebGLTerminalProps> = ({ onPortSelect, onBa
     term.writeln('\x1b[90mReady. Select target port and baud rate to connect.\x1b[0m\n');
 
     xtermRef.current = term;
+    void (window as any).cavallo?.getStatus?.().then((status: { connected: boolean; port: string; baudRate: number }) => {
+      setIsConnected(status.connected);
+      onConnectionChange?.(status.connected);
+      if (status.port) { setSelectedPort(status.port); onPortSelect?.(status.port); }
+      if (status.baudRate) { setSelectedBaud(status.baudRate); onBaudSelect?.(status.baudRate); }
+    }).catch((error: unknown) => console.warn('Failed to read serial status:', error));
 
     // Listen for incoming serial data from main process
     const removeDataListener = (window as any).cavallo?.onSerialData?.((chunk: string) => {
@@ -89,7 +96,7 @@ export const WebGLTerminal: React.FC<WebGLTerminalProps> = ({ onPortSelect, onBa
         if (autoScrollRef.current) xtermRef.current.scrollToBottom();
       }
     });
-    const removeErrorListener = (window as any).api?.onSerialError?.((message: string) => term.writeln(`\r\n\x1b[31m[Serial error] ${message}\x1b[0m`));
+    const removeErrorListener = (window as any).api?.onSerialError?.((message: string) => { setIsConnected(false); onConnectionChange?.(false); term.writeln(`\r\n\x1b[31m[Serial error] ${message}\x1b[0m`); });
 
     refreshPorts();
 
@@ -98,7 +105,7 @@ export const WebGLTerminal: React.FC<WebGLTerminalProps> = ({ onPortSelect, onBa
       removeDataListener?.();
       removeErrorListener?.();
     };
-  }, [onOutput]);
+  }, [onOutput, onConnectionChange]);
 
   const handleClear = () => {
     xtermRef.current?.clear();
@@ -108,31 +115,67 @@ export const WebGLTerminal: React.FC<WebGLTerminalProps> = ({ onPortSelect, onBa
     const term = xtermRef.current;
     if (!term) return;
 
-    const ts = '';
-
     if (isConnected) {
-      await (window as any).cavallo?.disconnectSerial?.();
-      setIsConnected(false);
-      term.writeln(`\n${ts}\x1b[33m[Disconnected] Port ${selectedPort} closed.\x1b[0m\n`);
+      try {
+        await (window as any).cavallo?.disconnectSerial?.();
+        setIsConnected(false);
+        onConnectionChange?.(false);
+        term.writeln(`\n\x1b[33m[Disconnected] Port ${selectedPort} closed.\x1b[0m\n`);
+      } catch (error: any) { term.writeln(`\r\n\x1b[31m[Disconnect error] ${error?.message || error}\x1b[0m`); }
     } else {
       if (!selectedPort) {
         term.writeln(`\n\x1b[31m[Error] No serial port selected. Connect a hardware board and retry.\x1b[0m\n`);
         return;
       }
-      term.writeln(`\n${ts}\x1b[32m[Connecting] Opening ${selectedPort} @ ${selectedBaud} baud...\x1b[0m`);
+      term.writeln(`\n\x1b[32m[Connecting] Opening ${selectedPort} @ ${selectedBaud} baud...\x1b[0m`);
       if ((window as any).cavallo?.connectSerial) {
         try {
           const res = await (window as any).cavallo.connectSerial(selectedPort, selectedBaud);
           if (res?.success) {
             setIsConnected(true);
-            term.writeln(`${ts}\x1b[32m[Connected] Serial link active on ${selectedPort}.\x1b[0m\n`);
+            onConnectionChange?.(true);
+            term.writeln(`\x1b[32m[Connected] Serial link active on ${selectedPort}.\x1b[0m\n`);
           } else {
-            term.writeln(`${ts}\x1b[31m[Error] Failed to open ${selectedPort}.\x1b[0m\n`);
+            term.writeln(`\x1b[31m[Error] Failed to open ${selectedPort}.\x1b[0m\n`);
           }
         } catch (err: any) {
-          term.writeln(`${ts}\x1b[31m[Error] ${err?.message || 'Connection failed'}\x1b[0m\n`);
+          term.writeln(`\x1b[31m[Error] ${err?.message || 'Connection failed'}\x1b[0m\n`);
         }
       }
+    }
+  };
+
+  const refreshPortsRef = useRef(refreshPorts)
+  const toggleConnectionRef = useRef(handleToggleConnect)
+  refreshPortsRef.current = refreshPorts
+  toggleConnectionRef.current = handleToggleConnect
+
+  useEffect(() => {
+    const refresh = () => { void refreshPortsRef.current(); };
+    const toggle = () => { void toggleConnectionRef.current(); };
+    window.addEventListener('cavallo:refresh-ports', refresh);
+    window.addEventListener('cavallo:toggle-serial', toggle);
+    return () => {
+      window.removeEventListener('cavallo:refresh-ports', refresh);
+      window.removeEventListener('cavallo:toggle-serial', toggle);
+    };
+  }, []);
+
+  const changeSerialConfiguration = async (port: string, baud: number) => {
+    setSelectedPort(port);
+    setSelectedBaud(baud);
+    onPortSelect?.(port);
+    onBaudSelect?.(baud);
+    if (!isConnected) return;
+    try {
+      await (window as any).cavallo.disconnectSerial();
+      const result = await (window as any).cavallo.connectSerial(port, baud);
+      if (!result?.success) throw new Error('Serial reconnect failed.');
+      xtermRef.current?.writeln(`\r\n\x1b[32m[Reconnected] ${port} @ ${baud} baud.\x1b[0m`);
+    } catch (error: any) {
+      setIsConnected(false);
+      onConnectionChange?.(false);
+      xtermRef.current?.writeln(`\r\n\x1b[31m[Reconnect error] ${error?.message || error}\x1b[0m`);
     }
   };
 
@@ -160,8 +203,7 @@ export const WebGLTerminal: React.FC<WebGLTerminalProps> = ({ onPortSelect, onBa
           value={selectedPort}
           onFocus={refreshPorts}
           onChange={(e) => {
-            setSelectedPort(e.target.value);
-            onPortSelect?.(e.target.value);
+            void changeSerialConfiguration(e.target.value, selectedBaud);
           }}
           style={selectStyle}
         >
@@ -178,8 +220,7 @@ export const WebGLTerminal: React.FC<WebGLTerminalProps> = ({ onPortSelect, onBa
           value={selectedBaud}
           onChange={(e) => {
             const b = Number(e.target.value);
-            setSelectedBaud(b);
-            onBaudSelect?.(b);
+            void changeSerialConfiguration(selectedPort, b);
           }}
           style={selectStyle}
         >

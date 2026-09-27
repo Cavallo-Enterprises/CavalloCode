@@ -1,5 +1,6 @@
 import { readFile, writeFile, mkdir } from 'fs/promises'
 import { dirname } from 'path'
+import { safeStorage } from 'electron'
 import type { CavalloAIConfiguration, CavalloAIContext } from '../../../../packages/plugin-api/src/index'
 
 export type AIConfig = CavalloAIConfiguration
@@ -10,16 +11,31 @@ let configPath = ''
 
 export function initializeAIService(path: string) { configPath = path }
 
-export async function getAIConfig(): Promise<AIConfig> {
+async function readStoredConfig(): Promise<AIConfig & { encryptedApiKey?: string }> {
   if (!configPath) return defaults
   try { return { ...defaults, ...JSON.parse(await readFile(configPath, 'utf8')) } }
   catch { return defaults }
 }
 
+function decryptKey(config: AIConfig & { encryptedApiKey?: string }): string {
+  if (!config.encryptedApiKey) return config.apiKey || ''
+  if (!safeStorage.isEncryptionAvailable()) throw new Error('OS secure storage is unavailable; configure secure storage before using a saved AI key.')
+  return safeStorage.decryptString(Buffer.from(config.encryptedApiKey, 'base64'))
+}
+
+export async function getAIConfig() {
+  const config = await readStoredConfig()
+  return { provider: config.provider, model: config.model, endpoint: config.endpoint, apiKey: '', hasApiKey: Boolean(config.encryptedApiKey || config.apiKey) }
+}
+
 export async function configureAI(config: AIConfig) {
   if (!configPath) throw new Error('AI settings are not initialized.')
+  const previous = await readStoredConfig()
+  const apiKey = config.apiKey || (config.provider === previous.provider ? decryptKey(previous) : '')
+  if (apiKey && !safeStorage.isEncryptionAvailable()) throw new Error('OS secure storage is unavailable; the API key was not saved.')
+  const encryptedApiKey = apiKey ? safeStorage.encryptString(apiKey).toString('base64') : undefined
   await mkdir(dirname(configPath), { recursive: true })
-  await writeFile(configPath, JSON.stringify(config, null, 2), 'utf8')
+  await writeFile(configPath, JSON.stringify({ provider: config.provider, model: config.model, endpoint: config.endpoint, ...(encryptedApiKey ? { encryptedApiKey } : {}) }, null, 2), 'utf8')
   return { success: true }
 }
 
@@ -28,7 +44,8 @@ function buildSystemPrompt(context: AIContext) {
 }
 
 export async function askAI(prompt: string, context: AIContext) {
-  const config = await getAIConfig()
+  const stored = await readStoredConfig()
+  const config = { ...stored, apiKey: decryptKey(stored) }
   const system = buildSystemPrompt(context)
   let response: Response
   if (config.provider === 'openai') {

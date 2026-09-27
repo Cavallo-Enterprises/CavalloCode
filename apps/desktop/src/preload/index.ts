@@ -5,6 +5,7 @@ import { electronAPI } from '@electron-toolkit/preload'
 const api = {
   // Serial port operations (IPC calls to main process)
   listSerialPorts: () => ipcRenderer.invoke('serial:list'),
+  getSerialStatus: () => ipcRenderer.invoke('serial:status'),
   connectSerial: (port: string, baud: number) => ipcRenderer.invoke('serial:connect', port, baud),
   disconnectSerial: () => ipcRenderer.invoke('serial:disconnect'),
   sendSerialData: (data: string) => ipcRenderer.invoke('serial:send', data),
@@ -14,6 +15,7 @@ const api = {
   readFile: (path: string) => ipcRenderer.invoke('fs:read-file', path),
   writeFile: (path: string, content: string) => ipcRenderer.invoke('fs:write-file', path, content),
   readDirectory: (path: string) => ipcRenderer.invoke('fs:read-directory', path),
+  createProjectTemplate: (name: string, template: 'esp32' | 'arduino-uno' | 'arduino-nano' | 'pico') => ipcRenderer.invoke('project:create-template', name, template),
 
   onSerialData: (callback: (data: string) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, data: string) => callback(data)
@@ -27,6 +29,7 @@ const api = {
   },
   cavallo: {
     listPorts: () => ipcRenderer.invoke('serial:list'),
+    getStatus: () => ipcRenderer.invoke('serial:status'),
     connectSerial: (port: string, baud: number) => ipcRenderer.invoke('serial:connect', port, baud),
     disconnectSerial: () => ipcRenderer.invoke('serial:disconnect'),
     sendSerialData: (data: string) => ipcRenderer.invoke('serial:send', data),
@@ -44,7 +47,8 @@ const api = {
   isWindowMaximized: () => ipcRenderer.invoke('window:isMaximized'),
 
   // Hardware operations
-  compileProject: (projectPath: string) => ipcRenderer.invoke('hardware:compile', projectPath),
+  compileProject: (projectPath: string, board?: string) => ipcRenderer.invoke('hardware:compile', projectPath, board),
+  flashHardware: (board: string, port: string, artifactPath: string) => ipcRenderer.invoke('hardware:flash', board, port, artifactPath),
   flashESP32: (port: string, binPath: string) => ipcRenderer.invoke('hardware:flash-esp32', port, binPath),
   flashArduino: (board: 'uno' | 'nano', port: string, hexPath: string) => ipcRenderer.invoke('hardware:flash-arduino', board, port, hexPath),
   onHardwareBuildLog: (callback: (line: string) => void) => {
@@ -62,6 +66,7 @@ const api = {
   debugRestart: () => ipcRenderer.invoke('debug:restart'),
   debugStop: () => ipcRenderer.invoke('debug:stop'),
   debugEvaluate: (expression: string) => ipcRenderer.invoke('debug:evaluate', expression),
+  debugSetBreakpoints: (points: Array<{ file: string; line: number }>) => ipcRenderer.invoke('debug:breakpoints', points),
   onDebugOutput: (callback: (event: { stream: string; text: string }) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, data: { stream: string; text: string }) => callback(data)
     ipcRenderer.on('debug:output', listener)

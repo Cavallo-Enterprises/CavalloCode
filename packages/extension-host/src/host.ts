@@ -1,29 +1,42 @@
-import { CavalloPlugin } from '../../plugin-api/src/index.js';
+import type { CavalloBoardDefinition, CavalloPlugin, ExtensionContext } from '../../plugin-api/src/index'
+import { dirname, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
-console.log('CavalloCode Extension Host Initializing...');
+interface ActivePlugin { id: string; path: string; plugin: CavalloPlugin; boards: CavalloBoardDefinition[]; subscriptions: ExtensionContext['subscriptions'] }
 
-// In a real implementation, this would connect via IPC (e.g., node-ipc or process.send)
-// to the Main Process to receive commands to load/unload extensions.
 export class ExtensionHostManager {
-  private plugins: Map<string, CavalloPlugin> = new Map();
+  private readonly plugins = new Map<string, ActivePlugin>()
 
-  constructor() {
-    // Setup IPC listeners here
+  async registerPlugin(id: string, plugin: CavalloPlugin, extensionPath: string) {
+    await this.unloadPlugin(id)
+    const subscriptions: ExtensionContext['subscriptions'] = []
+    const context: ExtensionContext = { subscriptions, extensionPath }
+    plugin.activate(context)
+    const active = { id, path: extensionPath, plugin, boards: plugin.registerBoard?.() || [], subscriptions }
+    this.plugins.set(id, active)
+    return { id, boards: active.boards }
   }
 
-  public loadPlugin(id: string, pluginPath: string) {
-    try {
-      // Dynamic import of plugin
-      // const pluginModule = await import(pluginPath);
-      // const plugin = pluginModule.default || pluginModule;
-      // plugin.activate({...});
-      console.log(`Loaded plugin: ${id}`);
-    } catch (e) {
-      console.error(`Failed to load plugin: ${id}`, e);
-    }
+  async loadPlugin(id: string, pluginPath: string) {
+    const resolvedPath = resolve(pluginPath)
+    const loaded = await import(pathToFileURL(resolvedPath).href) as { default?: CavalloPlugin }
+    if (!loaded.default || typeof loaded.default.activate !== 'function') throw new Error(`Extension ${id} has no valid default plugin export.`)
+    return this.registerPlugin(id, loaded.default, dirname(resolvedPath))
   }
-}
 
-if (process.argv.includes('--run-worker')) {
-  new ExtensionHostManager();
+  async unloadPlugin(id: string) {
+    const active = this.plugins.get(id)
+    if (!active) return
+    for (const subscription of active.subscriptions) subscription.dispose()
+    active.plugin.deactivate()
+    this.plugins.delete(id)
+  }
+
+  listPlugins() {
+    return [...this.plugins.values()].map(({ id, path, boards }) => ({ id, path, boards }))
+  }
+
+  async dispose() {
+    for (const id of this.plugins.keys()) await this.unloadPlugin(id)
+  }
 }

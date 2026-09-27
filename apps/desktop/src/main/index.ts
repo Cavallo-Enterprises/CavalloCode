@@ -1,31 +1,20 @@
 import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
-import { join } from 'path'
-import { promises as fs } from 'fs'
+import { join } from 'node:path'
+import { promises as fs } from 'node:fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import { fork, ChildProcess } from 'child_process'
-import { compileProject, flashArduino, flashESP32, hardwareBuildEvents } from '../../../../packages/hardware-bridge/src/index'
-import { connectSerial, disconnectSerial, listPorts, sendSerialData, serialEvents } from '../../../../packages/hardware-bridge/src/serial'
-import { debugContinue, debugEvaluate, debugPause, debugRestart, debugStepInto, debugStepOut, debugStepOver, debuggerEvents, startGDB, stopGDB } from '../../../../packages/hardware-bridge/src/debugger'
+import { compileProject, flashArduino, flashESP32, flashHardware, hardwareBuildEvents } from '../../../../packages/hardware-bridge/src/index'
+import { connectSerial, disconnectSerial, getSerialStatus, listPorts, sendSerialData, serialEvents } from '../../../../packages/hardware-bridge/src/serial'
+import { debugContinue, debugEvaluate, debugPause, debugRestart, debugSetBreakpoints, debugStepInto, debugStepOut, debugStepOver, debuggerEvents, startGDB, stopGDB } from '../../../../packages/hardware-bridge/src/debugger'
 import { askAI, configureAI, getAIConfig, initializeAIService } from './aiService'
+import { createProjectTemplate, ProjectTemplate } from '../../../../packages/hardware-bridge/src/templates'
+import { ExtensionHostManager } from '../../../../packages/extension-host/src/host'
+import esp32Plugin from '../../../../extensions/builtin-esp32/src/index'
+import arduinoPlugin from '../../../../extensions/builtin-arduino/src/index'
+import picoPlugin from '../../../../extensions/builtin-raspberrypi/src/index'
 
+const extensionHost = new ExtensionHostManager()
 
-let extensionHostProcess: ChildProcess | null = null;
-
-function startExtensionHost() {
-  const hostPath = join(__dirname, '../../packages/extension-host/src/host.ts');
-  console.log(`Starting extension host from ${hostPath}`);
-  
-  // In a real build, we would fork the compiled .js file
-  extensionHostProcess = fork(hostPath, ['--run-worker'], {
-    // env: process.env,
-    // execArgv: ['--loader', 'ts-node/esm'] // If using ts-node
-  });
-
-  extensionHostProcess.on('message', (msg) => {
-    console.log('Message from Extension Host:', msg);
-  });
-}
 
 function createWindow(): void {
   // Create the frameless browser window with custom titlebar.
@@ -97,9 +86,14 @@ function createWindow(): void {
 }
 
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   electronApp.setAppUserModelId('com.cavallocode')
   initializeAIService(join(app.getPath('userData'), 'ai-settings.json'))
+  await Promise.all([
+    extensionHost.registerPlugin('builtin-esp32', esp32Plugin, 'builtin:esp32'),
+    extensionHost.registerPlugin('builtin-arduino', arduinoPlugin, 'builtin:arduino'),
+    extensionHost.registerPlugin('builtin-raspberrypi', picoPlugin, 'builtin:raspberrypi'),
+  ])
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
@@ -120,6 +114,13 @@ app.whenReady().then(() => {
     return entries.map((entry) => ({ name: entry.name, path: join(path, entry.name), isDirectory: entry.isDirectory() }))
       .sort((a, b) => Number(b.isDirectory) - Number(a.isDirectory) || a.name.localeCompare(b.name))
   })
+  ipcMain.handle('project:create-template', async (event, name: string, template: ProjectTemplate) => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    const options = { title: 'Choose the parent folder for the new project', properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'> }
+    const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
+    if (result.canceled || !result.filePaths[0]) return null
+    return createProjectTemplate(result.filePaths[0], name, template)
+  })
 
   hardwareBuildEvents.on('log', (line: string) => {
     for (const window of BrowserWindow.getAllWindows()) {
@@ -128,6 +129,7 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('serial:list', () => listPorts())
+  ipcMain.handle('serial:status', () => getSerialStatus())
   ipcMain.handle('serial:connect', (_event, port: string, baud: number) => connectSerial(port, baud))
   ipcMain.handle('serial:disconnect', () => disconnectSerial())
   ipcMain.handle('serial:send', (_event, data: string) => sendSerialData(data))
@@ -149,17 +151,12 @@ app.whenReady().then(() => {
   ipcMain.handle('debug:restart', () => debugRestart())
   ipcMain.handle('debug:stop', () => stopGDB())
   ipcMain.handle('debug:evaluate', (_event, expression: string) => debugEvaluate(expression))
+  ipcMain.handle('debug:breakpoints', (_event, points: Array<{ file: string; line: number }>) => debugSetBreakpoints(points))
   ipcMain.handle('ai:get-config', () => getAIConfig())
   ipcMain.handle('ai:configure', (_event, config) => configureAI(config))
   ipcMain.handle('ai:ask', (_event, prompt: string, context) => askAI(prompt, context))
 
-  ipcMain.handle('ext:list', async () => {
-    return [
-      { id: 'builtin-esp32', name: 'ESP32 Support', version: '1.0.0' },
-      { id: 'builtin-arduino', name: 'Arduino Support', version: '1.0.0' },
-      { id: 'builtin-raspberrypi', name: 'Raspberry Pi Support', version: '1.0.0' },
-    ];
-  });
+  ipcMain.handle('ext:list', () => extensionHost.listPlugins())
 
   // Window controls IPC
   ipcMain.on('window:minimize', (event) => {
@@ -187,11 +184,10 @@ app.whenReady().then(() => {
     return win?.isMaximized() ?? false;
   });
 
-  ipcMain.handle('hardware:compile', async (_event, projectPath: string) => compileProject(projectPath))
+  ipcMain.handle('hardware:compile', async (_event, projectPath: string, board?: string) => compileProject(projectPath, board))
+  ipcMain.handle('hardware:flash', async (_event, board: string, port: string, artifactPath: string) => flashHardware(board, port, artifactPath))
   ipcMain.handle('hardware:flash-esp32', async (_event, port: string, binPath: string) => flashESP32(port, binPath))
   ipcMain.handle('hardware:flash-arduino', async (_event, board: 'uno' | 'nano', port: string, hexPath: string) => flashArduino(board, port, hexPath))
-
-  ipcMain.on('ping', () => console.log('pong'))
 
   createWindow()
 
@@ -206,4 +202,6 @@ app.on('window-all-closed', () => {
     app.quit()
   }
 })
+
+app.on('will-quit', () => { void extensionHost.dispose() })
 

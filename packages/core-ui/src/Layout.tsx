@@ -40,6 +40,7 @@ export interface FileItem {
   language: 'cpp' | 'python' | 'c' | 'plaintext';
   content: string;
   isDirectory?: boolean;
+  depth?: number;
 }
 
 export const DEFAULT_PROJECT_FILES: FileItem[] = [
@@ -130,13 +131,19 @@ interface LayoutProps {
   onHardwareLog?: (callback: (line: string) => void) => () => void;
   onOpenFile?: (file: FileItem) => void;
   debugOutput?: string;
-  onStartDebug?: () => void;
+  onStartDebug?: (gdbPath: string) => void;
   onDebugAction?: (action: 'continue' | 'pause' | 'step-over' | 'step-into' | 'step-out' | 'restart' | 'stop') => void;
   onAskAI?: (prompt: string) => Promise<string>;
-  onInsertAI?: (text: string) => void;
+  onInsertAI?: (text: string, mode: 'insert' | 'apply') => void;
+  onCreateProject?: (name: string, template: 'esp32' | 'arduino-uno' | 'arduino-nano' | 'pico') => Promise<string | null>;
+  onBoardChange?: (board: string) => void;
+  serialConnected?: boolean;
+  onToggleSerial?: () => void;
+  onOpenDebug?: () => void;
+  onOpenSerial?: () => void;
 }
 
-export const Layout: React.FC<LayoutProps> = ({
+export const Layout = ({
   children,
   theme,
   onThemeChange,
@@ -150,9 +157,9 @@ export const Layout: React.FC<LayoutProps> = ({
   activeBoard = 'ESP32 Dev Module',
   activePort = 'COM3',
   activeBaud = 115200,
-  workspaceRoot = null,
-  workspaceFiles = DEFAULT_PROJECT_FILES,
-  dirtyFileIds = [],
+  workspaceRoot: workspaceRootProp,
+  workspaceFiles: workspaceFilesProp,
+  dirtyFileIds: dirtyFileIdsProp,
   onOpenFolder,
   onSaveFile,
   onHardwareLog,
@@ -161,8 +168,17 @@ export const Layout: React.FC<LayoutProps> = ({
   onStartDebug,
   onDebugAction,
   onAskAI,
-  onInsertAI
-}) => {
+  onInsertAI,
+  onCreateProject,
+  onBoardChange,
+  serialConnected = false,
+  onToggleSerial,
+  onOpenDebug,
+  onOpenSerial
+}: LayoutProps) => {
+  const workspaceRoot: string | null = workspaceRootProp ?? null;
+  const workspaceFiles: FileItem[] = workspaceFilesProp ?? DEFAULT_PROJECT_FILES;
+  const dirtyFileIds: string[] = dirtyFileIdsProp ?? [];
   const [activeActivity, setActiveActivity] = useState<'explorer' | 'hardware' | 'serial' | 'debug' | 'ai' | 'extensions' | 'settings'>('explorer');
   const [openFiles, setOpenFiles] = useState<FileItem[]>([DEFAULT_PROJECT_FILES[0], DEFAULT_PROJECT_FILES[1]]);
   const [bottomTab, setBottomTab] = useState<'terminal' | 'plotter' | 'build'>('terminal');
@@ -176,11 +192,26 @@ export const Layout: React.FC<LayoutProps> = ({
   const [aiMessages, setAiMessages] = useState<Array<{ role: 'user' | 'assistant'; text: string }>>([]);
   const [aiInput, setAiInput] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
-  const [aiConfig, setAiConfig] = useState<{ provider: 'openai' | 'gemini' | 'anthropic' | 'ollama'; apiKey: string; model: string; endpoint: string }>({ provider: 'openai', apiKey: '', model: 'gpt-4o-mini', endpoint: 'http://localhost:11434' });
+  const [aiConfig, setAiConfig] = useState<{ provider: 'openai' | 'gemini' | 'anthropic' | 'ollama'; apiKey: string; hasApiKey: boolean; model: string; endpoint: string }>({ provider: 'openai', apiKey: '', hasApiKey: false, model: 'gpt-4o-mini', endpoint: 'http://localhost:11434' });
   const [debugToolbarVisible, setDebugToolbarVisible] = useState(false);
+  const [gdbPath, setGdbPath] = useState('');
+  const [newProjectName, setNewProjectName] = useState('my-firmware')
+  const [newProjectTemplate, setNewProjectTemplate] = useState<'esp32' | 'arduino-uno' | 'arduino-nano' | 'pico'>('esp32')
+  const [projectError, setProjectError] = useState('')
 
   useEffect(() => { (window as any).api?.getAIConfig?.().then(setAiConfig).catch(console.warn); }, []);
-  useEffect(() => setDebugToolbarVisible(Boolean(debugOutput)), [debugOutput]);
+  useEffect(() => { if (debugOutput) setDebugToolbarVisible(true); }, [debugOutput]);
+
+  useEffect(() => {
+    const openSerial = () => { setActiveActivity('serial'); setBottomTab('terminal'); setBottomOpen(true); };
+    const openDebug = () => { setActiveActivity('debug'); setDebugToolbarVisible(true); };
+    window.addEventListener('cavallo:open-serial', openSerial);
+    window.addEventListener('cavallo:open-debug', openDebug);
+    return () => {
+      window.removeEventListener('cavallo:open-serial', openSerial);
+      window.removeEventListener('cavallo:open-debug', openDebug);
+    };
+  }, []);
 
   const askAssistant = async (prompt: string) => {
     if (!onAskAI || aiBusy) return;
@@ -204,7 +235,7 @@ export const Layout: React.FC<LayoutProps> = ({
   // File open handler
   const handleOpenFile = async (fileName: string) => {
     let found = workspaceFiles.find((f) => f.name === fileName || f.path === fileName);
-    if (found && !found.content && !found.isDirectory && (window as any).api?.readFile) {
+    if (found && !found.content && !found.isDirectory && !onOpenFile && (window as any).api?.readFile) {
       found = { ...found, content: await (window as any).api.readFile(found.path) };
     }
     if (found) {
@@ -256,11 +287,10 @@ export const Layout: React.FC<LayoutProps> = ({
         const out = await onCompile();
                         if (!onHardwareLog) setBuildLogs((prev) => prev + out);
       } else if ((window as any).api?.compileProject) {
-        const res = await (window as any).api.compileProject(workspaceRoot || '.');
+        const res = await (window as any).api.compileProject(workspaceRoot || '.', activeBoard);
+        if (!res?.success) throw new Error('Hardware compiler failed.');
         if (!onHardwareLog) setBuildLogs((prev) => prev + (res?.output || 'Compilation finished.\n'));
-      } else {
-        setBuildLogs((prev) => prev + `[CavalloCode Toolchain] Built firmware for ${activeBoard}.\n=== [SUCCESS] ===\n`);
-      }
+      } else throw new Error('No hardware compiler is connected to the main process.');
     } catch (err: any) {
       setBuildLogs((prev) => prev + `[Error] ${err?.message || err}\n`);
     } finally {
@@ -275,25 +305,25 @@ export const Layout: React.FC<LayoutProps> = ({
     setBottomTab('build');
     setBuildLogs((prev) => prev + `\n[${new Date().toLocaleTimeString()}] Flashing target on ${activePort}...\n`);
     try {
+      if (!activePort) throw new Error('Select a serial port before uploading.')
+      if (!workspaceRoot) throw new Error('Open a project folder before uploading.')
       if (onFlash) {
         const out = await onFlash();
         if (!onHardwareLog) setBuildLogs((prev) => prev + out);
       } else if ((window as any).api?.compileProject) {
-        const build = await (window as any).api.compileProject(workspaceRoot || '.');
+        const build = await (window as any).api.compileProject(workspaceRoot, activeBoard);
         if (!build.success) throw new Error('Compilation failed; upload canceled.');
         const isArduino = /arduino|uno|nano/i.test(activeBoard);
         const board = /nano/i.test(activeBoard) ? 'nano' : 'uno';
-        const artifact = isArduino
-          ? `${workspaceRoot}/.pio/build/${board === 'nano' ? 'nanoatmega328' : 'uno'}/firmware.hex`
-          : `${workspaceRoot}/.pio/build/esp32dev/firmware.bin`;
-        const res = isArduino
-          ? await (window as any).api.flashArduino(board, activePort, artifact)
-          : await (window as any).api.flashESP32(activePort, artifact);
+        const isPico = /pico|rp2040/i.test(activeBoard);
+        const environment = isPico ? 'pico' : board === 'nano' ? 'nanoatmega328' : 'uno';
+        const artifact = isPico
+          ? `${workspaceRoot}/build/${String(workspaceRoot).split(/[\\/]/).pop()}.uf2`
+          : isArduino ? `${workspaceRoot}/.pio/build/${environment}/firmware.hex` : `${workspaceRoot}/.pio/build/esp32dev/firmware.bin`;
+        const res = await (window as any).api.flashHardware(activeBoard, activePort, artifact);
         if (!res.success) throw new Error('Upload failed.');
         if (!onHardwareLog) setBuildLogs((prev) => prev + (res?.output || 'Flash finished.\n'));
-      } else {
-        setBuildLogs((prev) => prev + `[CavalloCode Flasher] Flashed firmware to ${activePort}.\n=== [SUCCESS] ===\n`);
-      }
+      } else throw new Error('No hardware flasher is connected to the main process.');
     } catch (err: any) {
       setBuildLogs((prev) => prev + `[Error] ${err?.message || err}\n`);
     } finally {
@@ -365,7 +395,7 @@ export const Layout: React.FC<LayoutProps> = ({
                   borderRadius: '0px',
                   outline: 'none'
                 }}
-                onMouseEnter={(e) => {
+                onMouseEnter={() => {
                   if (activeMenu && activeMenu !== menu) setActiveMenu(menu);
                 }}
               >
@@ -379,7 +409,6 @@ export const Layout: React.FC<LayoutProps> = ({
                     left: 0,
                     backgroundColor: '#252526',
                     border: '1px solid #454545',
-                    boxShadow: '0 4px 10px rgba(0,0,0,0.5)',
                     minWidth: '160px',
                     zIndex: 10000,
                     padding: '4px 0'
@@ -396,6 +425,10 @@ export const Layout: React.FC<LayoutProps> = ({
                         if (item.includes('Compile')) handleCompile();
                         if (item.includes('Upload')) handleFlash();
                         if (item.includes('Toggle Panel')) setBottomOpen(!bottomOpen);
+                        if (item === 'Select Board') setActiveActivity('hardware');
+                        if (item === 'Auto-Detect Ports') { setActiveActivity('serial'); setBottomTab('terminal'); setBottomOpen(true); window.setTimeout(() => window.dispatchEvent(new Event('cavallo:refresh-ports')), 0); }
+                        if (item === 'Serial Monitor') { setActiveActivity('serial'); setBottomOpen(true); setBottomTab('terminal'); }
+                        if (item === 'Select Theme' || item === 'Theme') setActiveActivity('settings');
                       }}
                       style={{
                         padding: '6px 14px',
@@ -461,13 +494,13 @@ export const Layout: React.FC<LayoutProps> = ({
 
         {/* Right: Window Controls */}
         <div style={{ display: 'flex', alignItems: 'center', height: '100%', WebkitAppRegion: 'no-drag' as any }}>
-          <button onClick={handleMinimize} style={winControlBtnStyle('#333333')}>
+          <button onClick={handleMinimize} style={winControlBtnStyle()}>
             <Minus size={14} />
           </button>
-          <button onClick={handleMaximize} style={winControlBtnStyle('#333333')}>
+          <button onClick={handleMaximize} style={winControlBtnStyle()}>
             <Square size={12} />
           </button>
-          <button onClick={handleClose} style={winControlBtnStyle('#e81123')}>
+          <button onClick={handleClose} style={winControlBtnStyle()}>
             <X size={14} />
           </button>
         </div>
@@ -603,6 +636,14 @@ export const Layout: React.FC<LayoutProps> = ({
                         <span>{workspaceRoot ? workspaceRoot.split(/[\\/]/).pop() : 'CAVALLO-WORKSPACE'}</span>
                       </div>
                       <button onClick={onOpenFolder} style={{ ...sidebarBtnStyle, background: '#3c3c3c', margin: '4px 12px 8px', width: 'calc(100% - 24px)' }}>Open Folder</button>
+                      <div style={{ padding: '0 12px 8px', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                        <input value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} aria-label="New project name" style={debugInputStyle} />
+                        <select value={newProjectTemplate} onChange={(event) => setNewProjectTemplate(event.target.value as typeof newProjectTemplate)} style={debugInputStyle}>
+                          <option value="esp32">ESP32 / PlatformIO</option><option value="arduino-uno">Arduino Uno / PlatformIO</option><option value="arduino-nano">Arduino Nano / PlatformIO</option><option value="pico">Raspberry Pi Pico / CMake</option>
+                        </select>
+                        <button onClick={async () => { try { setProjectError(''); await onCreateProject?.(newProjectName, newProjectTemplate); } catch (error: any) { setProjectError(error?.message || String(error)); } }} disabled={!newProjectName.trim()} style={{ ...sidebarBtnStyle, background: '#0e639c' }}>Create Project</button>
+                        {projectError && <span style={{ color: '#f48771', fontSize: 11 }}>{projectError}</span>}
+                      </div>
                       {workspaceFiles.map((file) => {
                         const isSelected = activeFile.id === file.id;
                         return (
@@ -610,7 +651,7 @@ export const Layout: React.FC<LayoutProps> = ({
                             key={file.id}
                             onDoubleClick={() => { if (!file.isDirectory) handleOpenFile(file.path); }}
                             style={{
-                              padding: '5px 12px 5px 28px',
+                              padding: `5px 12px 5px ${28 + (file.depth || 0) * 14}px`,
                               cursor: 'pointer',
                               display: 'flex',
                               alignItems: 'center',
@@ -643,9 +684,9 @@ export const Layout: React.FC<LayoutProps> = ({
                     <div style={{ padding: '8px 12px', fontSize: '12px', display: 'flex', flexDirection: 'column', gap: 12 }}>
                       <div>
                         <div style={{ color: '#888', marginBottom: 4 }}>TARGET BOARD</div>
-                        <div style={{ padding: '6px 8px', background: '#1e1e1e', border: '1px solid #3c3c3c', color: '#fff' }}>
-                          🔌 {activeBoard}
-                        </div>
+                        <select value={activeBoard} onChange={(event) => onBoardChange?.(event.target.value)} style={debugInputStyle}>
+                          <option>ESP32 Dev Module</option><option>Arduino Uno</option><option>Arduino Nano</option><option>Raspberry Pi Pico</option>
+                        </select>
                       </div>
                       <div>
                         <div style={{ color: '#888', marginBottom: 4 }}>COMMUNICATION PORT</div>
@@ -672,7 +713,8 @@ export const Layout: React.FC<LayoutProps> = ({
 
                   {activeActivity === 'debug' && (
                     <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 12, fontSize: 12 }}>
-                      <button onClick={onStartDebug} style={{ ...sidebarBtnStyle, background: '#0e639c' }}>Start Debugging</button>
+                      <input value={gdbPath} onChange={(event) => setGdbPath(event.target.value)} aria-label="GDB executable" title="GDB executable on PATH or full path; leave empty to use the board default" placeholder="GDB executable (optional)" style={debugInputStyle} />
+                      <button onClick={() => onStartDebug?.(gdbPath)} style={{ ...sidebarBtnStyle, background: '#0e639c' }}>Start Debugging</button>
                       <section>
                         <div style={sectionTitleStyle}>VARIABLES / REGISTERS</div>
                         <pre style={debugPaneStyle}>{debugOutput.split(/\r?\n/).filter((line) => /\$\d+\s*=|=|register|local/i.test(line)).slice(-12).join('\n') || 'Variables appear after execution pauses.'}</pre>
@@ -703,7 +745,7 @@ export const Layout: React.FC<LayoutProps> = ({
                         {aiMessages.map((message, index) => <div key={index} style={{ padding: 8, background: message.role === 'assistant' ? '#1e1e1e' : '#263746', color: '#d4d4d4', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
                           <div style={{ color: message.role === 'assistant' ? '#4ec9b0' : '#9cdcfe', fontWeight: 600, marginBottom: 4 }}>{message.role === 'assistant' ? 'Cavallo AI' : 'You'}</div>
                           <pre style={{ margin: 0, whiteSpace: 'pre-wrap', font: 'inherit' }}>{message.text}</pre>
-                          {message.role === 'assistant' && <div style={{ display: 'flex', gap: 5, marginTop: 6 }}><button onClick={() => onInsertAI?.(message.text)} style={iconBtnStyle}><Code2 size={12} /> Insert into Editor</button><button onClick={() => onInsertAI?.(message.text)} style={iconBtnStyle}>Apply Fix</button></div>}
+                          {message.role === 'assistant' && <div style={{ display: 'flex', gap: 5, marginTop: 6 }}><button onClick={() => onInsertAI?.(message.text, 'insert')} style={iconBtnStyle}><Code2 size={12} /> Insert into Editor</button><button onClick={() => onInsertAI?.(message.text, 'apply')} style={iconBtnStyle}>Apply Fix</button></div>}
                         </div>)}
                         {!aiMessages.length && <div style={{ color: '#888', padding: 8 }}>Ask about firmware, boards, serial errors, or embedded drivers.</div>}
                       </div>
@@ -731,7 +773,7 @@ export const Layout: React.FC<LayoutProps> = ({
                           <option value="openai">OpenAI</option><option value="gemini">Google Gemini</option><option value="anthropic">Anthropic</option><option value="ollama">Local Ollama</option>
                         </select>
                         <input value={aiConfig.model} onChange={(event) => setAiConfig({ ...aiConfig, model: event.target.value })} placeholder="Model" style={{ ...debugInputStyle, marginTop: 5 }} />
-                        {aiConfig.provider === 'ollama' ? <input value={aiConfig.endpoint} onChange={(event) => setAiConfig({ ...aiConfig, endpoint: event.target.value })} placeholder="Ollama endpoint" style={{ ...debugInputStyle, marginTop: 5 }} /> : <input type="password" value={aiConfig.apiKey} onChange={(event) => setAiConfig({ ...aiConfig, apiKey: event.target.value })} placeholder="Provider API key" style={{ ...debugInputStyle, marginTop: 5 }} />}
+                        {aiConfig.provider === 'ollama' ? <input value={aiConfig.endpoint} onChange={(event) => setAiConfig({ ...aiConfig, endpoint: event.target.value })} placeholder="Ollama endpoint" style={{ ...debugInputStyle, marginTop: 5 }} /> : <input type="password" value={aiConfig.apiKey} onChange={(event) => setAiConfig({ ...aiConfig, apiKey: event.target.value })} placeholder={aiConfig.hasApiKey ? 'API key saved securely; enter to replace' : 'Provider API key'} style={{ ...debugInputStyle, marginTop: 5 }} />}
                         <button onClick={() => (window as any).api?.configureAI?.(aiConfig)} style={{ ...sidebarBtnStyle, background: '#0e639c', marginTop: 6 }}>Save AI Settings</button>
                       </div>
                       <div>
@@ -812,7 +854,7 @@ export const Layout: React.FC<LayoutProps> = ({
                               style={{
                                 marginLeft: 4,
                                 padding: 2,
-                                borderRadius: 2,
+                                borderRadius: 0,
                                 display: 'flex',
                                 alignItems: 'center'
                               }}
@@ -978,8 +1020,8 @@ export const Layout: React.FC<LayoutProps> = ({
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <span>🔌 {activeBoard}</span>
-          <span onClick={() => { setBottomTab('terminal'); setBottomOpen(true); }} title="Open Serial Monitor" style={{ cursor: 'pointer' }}>📡 {activePort}</span>
-          <span>⚡ {activeBaud} baud</span>
+          <span onClick={() => { setActiveActivity('serial'); setBottomTab('terminal'); setBottomOpen(true); }} title="Open Serial Monitor" style={{ cursor: 'pointer' }}>📡 {activePort || 'No port selected'} {serialConnected ? '●' : ''}</span>
+          <span onClick={() => { setActiveActivity('serial'); setBottomTab('terminal'); setBottomOpen(true); }} title="Open Serial Monitor" style={{ cursor: 'pointer' }}>⚡ {activeBaud} baud</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <CheckCircle size={12} /> Ready
           </span>
@@ -1011,10 +1053,15 @@ export const Layout: React.FC<LayoutProps> = ({
         onOpenFile={handleOpenFile}
         onCompile={handleCompile}
         onFlash={handleFlash}
-        onToggleTerminal={() => setBottomOpen(!bottomOpen)}
         onClearTerminal={() => setBuildLogs('')}
         onToggleTheme={() => onThemeChange(isDark ? 'vs' : 'vs-dark')}
         isDark={isDark}
+        files={workspaceFiles}
+        onSelectBoard={(board) => onBoardChange?.(board)}
+        serialConnected={serialConnected}
+        onToggleSerial={() => { setActiveActivity('serial'); setBottomTab('terminal'); setBottomOpen(true); window.setTimeout(() => onToggleSerial?.(), 0); }}
+        onOpenSerial={onOpenSerial || (() => { setActiveActivity('serial'); setBottomOpen(true); setBottomTab('terminal'); })}
+        onOpenDebug={onOpenDebug || (() => { setActiveActivity('debug'); setDebugToolbarVisible(true); })}
       />
     </div>
   );
@@ -1098,7 +1145,7 @@ const sectionTitleStyle: React.CSSProperties = { color: '#888', fontSize: 10, fo
 const debugPaneStyle: React.CSSProperties = { margin: 0, padding: 6, maxHeight: 100, overflow: 'auto', background: '#1e1e1e', color: '#ccc', whiteSpace: 'pre-wrap', fontSize: 11 };
 const aiQuickButtonStyle: React.CSSProperties = { textAlign: 'left', background: '#2d2d2d', color: '#ddd', border: '1px solid #3c3c3c', padding: '7px 8px', cursor: 'pointer', fontSize: 11 };
 
-function winControlBtnStyle(hoverBg: string): React.CSSProperties {
+function winControlBtnStyle(): React.CSSProperties {
   return {
     width: '46px',
     height: '30px',

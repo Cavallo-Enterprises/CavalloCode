@@ -5,12 +5,25 @@ const COLORS = ['#4ec9b0', '#569cd6', '#e5c07b', '#c586c0']
 export const SerialPlotter: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [series, setSeries] = useState<number[][]>([])
+  const pendingLine = useRef('')
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 })
 
   useEffect(() => {
+    const rowsToAdd = (chunk: string) => {
+      const combined = pendingLine.current + chunk
+      const lines = combined.split(/\r?\n/)
+      pendingLine.current = lines.pop() || ''
+      if (pendingLine.current.includes(',') && !/[,\s]$/.test(pendingLine.current)) {
+        lines.push(pendingLine.current)
+        pendingLine.current = ''
+      }
+      return lines.map((line) => line.trim()).filter(Boolean).map((line) => {
+        if (!/^[+-]?(?:\d+\.?\d*|\.\d+)(?:\s*[,;\s]\s*[+-]?(?:\d+\.?\d*|\.\d+))*$/.test(line)) return []
+        return line.split(/[\s,;]+/).map(Number).filter(Number.isFinite).slice(0, 4)
+      }).filter((values) => values.length > 0)
+    }
     const unsubscribe = (window as any).cavallo?.onSerialData?.((chunk: string) => {
-      const lines = chunk.split(/[\r\n]+/).filter(Boolean)
-      if (!lines.length) return
-      const rows = lines.map((line) => line.trim().split(/[\s,;]+/).map(Number).filter(Number.isFinite)).filter((values) => values.length)
+      const rows = rowsToAdd(chunk)
       if (!rows.length) return
       setSeries((current) => {
         const count = Math.min(4, Math.max(current.length, ...rows.map((row) => row.length)))
@@ -20,6 +33,14 @@ export const SerialPlotter: React.FC = () => {
       })
     })
     return () => unsubscribe?.()
+  }, [])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(([entry]) => setCanvasSize({ width: entry.contentRect.width, height: entry.contentRect.height }))
+    observer.observe(canvas)
+    return () => observer.disconnect()
   }, [])
 
   useEffect(() => {
@@ -57,7 +78,7 @@ export const SerialPlotter: React.FC = () => {
       })
       context.stroke()
     })
-  }, [series])
+  }, [series, canvasSize])
 
   return <div style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', background: '#1e1e1e', color: '#ccc' }}>
     <div style={{ display: 'flex', gap: 14, padding: '6px 10px', background: '#252526', fontSize: 11 }}>

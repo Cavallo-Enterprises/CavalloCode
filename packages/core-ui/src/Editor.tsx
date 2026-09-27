@@ -1,4 +1,4 @@
-import React, { useState, Component, ErrorInfo, ReactNode } from 'react';
+import React, { useState } from 'react';
 import * as monaco from 'monaco-editor';
 import MonacoEditor, { loader } from '@monaco-editor/react';
 
@@ -63,7 +63,11 @@ interface MonacoEditorProps {
   onBreakpointsChange?: (breakpoints: Array<{ file: string; line: number }>) => void;
 }
 
-class EditorErrorBoundary extends Component<{ children: ReactNode; fallbackValue: string; onChange: (v: string) => void }, { hasError: boolean }> {
+type EditorErrorBoundaryProps = { children: React.ReactNode; fallbackValue: string; onChange: (v: string) => void };
+
+class EditorErrorBoundary extends React.Component<EditorErrorBoundaryProps, { hasError: boolean }> {
+  declare props: Readonly<EditorErrorBoundaryProps>;
+  declare state: { hasError: boolean };
   constructor(props: any) {
     super(props);
     this.state = { hasError: false };
@@ -73,7 +77,7 @@ class EditorErrorBoundary extends Component<{ children: ReactNode; fallbackValue
     return { hasError: true };
   }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('Monaco Editor encountered an error:', error, errorInfo);
   }
 
@@ -94,7 +98,7 @@ class EditorErrorBoundary extends Component<{ children: ReactNode; fallbackValue
   }
 }
 
-export const CavalloMonacoEditor: React.FC<MonacoEditorProps> = ({
+export const CavalloMonacoEditor = ({
   value,
   onChange,
   language: propLanguage,
@@ -104,9 +108,10 @@ export const CavalloMonacoEditor: React.FC<MonacoEditorProps> = ({
   onThemeChange,
   showToolbar = false,
   breakpointFile = 'active-file',
-  breakpoints = [],
+  breakpoints: breakpointList,
   onBreakpointsChange,
-}) => {
+}: MonacoEditorProps) => {
+  const breakpoints: Array<{ file: string; line: number }> = breakpointList || [];
   const [internalLanguage, setInternalLanguage] = useState<Language>('cpp');
   const [internalCode, setInternalCode] = useState<string>(DEFAULT_CODE['cpp']);
   const editorRef = React.useRef<any>(null);

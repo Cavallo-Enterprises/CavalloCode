@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { Command } from 'cmdk';
-import { Play, Zap, Terminal, RefreshCw, Folder, Sun, Moon } from 'lucide-react';
+import { Play, Zap, Terminal, RefreshCw, Folder, Sun, Moon, Bug, Cpu, Cable } from 'lucide-react';
 
 interface CommandPaletteProps {
   open: boolean;
@@ -8,10 +8,15 @@ interface CommandPaletteProps {
   onOpenFile: (fileName: string) => void;
   onCompile: () => void;
   onFlash: () => void;
-  onToggleTerminal: () => void;
   onClearTerminal: () => void;
   onToggleTheme: () => void;
   isDark: boolean;
+  files: Array<{ name: string; path: string; isDirectory?: boolean }>;
+  onSelectBoard: (board: string) => void;
+  onToggleSerial: () => void;
+  serialConnected: boolean;
+  onOpenDebug: () => void;
+  onOpenSerial: () => void;
 }
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
@@ -20,10 +25,15 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onOpenFile,
   onCompile,
   onFlash,
-  onToggleTerminal,
   onClearTerminal,
   onToggleTheme,
-  isDark
+  isDark,
+  files,
+  onSelectBoard,
+  onToggleSerial,
+  serialConnected,
+  onOpenDebug,
+  onOpenSerial
 }) => {
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -69,7 +79,6 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           maxHeight: '400px',
           backgroundColor: '#252526',
           border: '1px solid #454545',
-          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.7)',
           color: '#cccccc',
           fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
           display: 'flex',
@@ -124,49 +133,39 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
           <Command.Group heading="Serial Monitor & Terminal" style={{ padding: '0 4px' }}>
             <Command.Item
-              onSelect={() => runAndClose(onToggleTerminal)}
+              onSelect={() => runAndClose(onOpenSerial)}
               style={itemStyle}
             >
               <Terminal size={14} color="#569cd6" />
-              <span>View: Toggle Bottom Panel (Serial Monitor / Output)</span>
+              <span>View: Open Serial Monitor</span>
             </Command.Item>
             <Command.Item
               onSelect={() => runAndClose(onClearTerminal)}
               style={itemStyle}
             >
               <RefreshCw size={14} color="#9cdcfe" />
-              <span>Terminal: Clear Active Output</span>
+              <span>Build Console: Clear Logs</span>
             </Command.Item>
           </Command.Group>
 
           <Command.Group heading="Files" style={{ padding: '0 4px' }}>
-            <Command.Item
-              onSelect={() => runAndClose(() => onOpenFile('main.cpp'))}
-              style={itemStyle}
-            >
-              <Folder size={14} color="#dcdc96" />
-              <span>File: Open src/main.cpp</span>
+            {files.filter((file) => !file.isDirectory).map((file) => <Command.Item key={file.path} onSelect={() => runAndClose(() => onOpenFile(file.path))} style={itemStyle}>
+              <Folder size={14} color="#dcdc96" /><span>File: Open {file.name}</span>
+            </Command.Item>)}
+          </Command.Group>
+
+          <Command.Group heading="Board & Debug" style={{ padding: '0 4px' }}>
+            {['ESP32 Dev Module', 'Arduino Uno', 'Arduino Nano', 'Raspberry Pi Pico'].map((board) => <Command.Item key={board} onSelect={() => runAndClose(() => onSelectBoard(board))} style={itemStyle}>
+              <Cpu size={14} color="#4ec9b0" /><span>Board: Select {board}</span>
+            </Command.Item>)}
+              <Command.Item onSelect={() => runAndClose(onOpenSerial)} style={itemStyle}>
+              <Cable size={14} color="#569cd6" /><span>Serial Monitor: Open</span>
             </Command.Item>
-            <Command.Item
-              onSelect={() => runAndClose(() => onOpenFile('config.h'))}
-              style={itemStyle}
-            >
-              <Folder size={14} color="#dcdc96" />
-              <span>File: Open src/config.h</span>
+            <Command.Item onSelect={() => runAndClose(onToggleSerial)} style={itemStyle}>
+              <Cable size={14} color="#569cd6" /><span>Serial: {serialConnected ? 'Disconnect' : 'Connect'}</span>
             </Command.Item>
-            <Command.Item
-              onSelect={() => runAndClose(() => onOpenFile('platformio.ini'))}
-              style={itemStyle}
-            >
-              <Folder size={14} color="#dcdc96" />
-              <span>File: Open platformio.ini</span>
-            </Command.Item>
-            <Command.Item
-              onSelect={() => runAndClose(() => onOpenFile('README.md'))}
-              style={itemStyle}
-            >
-              <Folder size={14} color="#dcdc96" />
-              <span>File: Open README.md</span>
+            <Command.Item onSelect={() => runAndClose(onOpenDebug)} style={itemStyle}>
+              <Bug size={14} color="#e5c07b" /><span>Debug: Open Debug & Run</span>
             </Command.Item>
           </Command.Group>
 

@@ -1,7 +1,7 @@
-import { CavalloPlugin, CavalloBoardDefinition } from '../../packages/plugin-api/src/index.js';
+import type { CavalloPlugin, CavalloBoardDefinition } from '../../../packages/plugin-api/src/index';
 
 const rpiPlugin: CavalloPlugin = {
-  activate(context) {
+  activate() {
     console.log('Raspberry Pi extension activated');
   },
   deactivate() {
