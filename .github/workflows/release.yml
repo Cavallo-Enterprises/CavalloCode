@@ -44,10 +44,29 @@ jobs:
       - name: Typecheck
         run: pnpm --filter desktop typecheck
 
+      - name: Match application version to release tag
+        if: github.ref_type == 'tag'
+        shell: bash
+        run: |
+          node -e 'const fs = require("node:fs"); const path = "apps/desktop/package.json"; const pkg = JSON.parse(fs.readFileSync(path, "utf8")); const version = process.env.GITHUB_REF_NAME.replace(/^v/, ""); if (!/^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/.test(version)) throw new Error(`Release tag must contain a semantic version: ${process.env.GITHUB_REF_NAME}`); pkg.version = version; fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + "\n");'
+
       - name: Build application
         run: pnpm --filter desktop build
 
       - name: Package and publish GitHub Release
+        if: github.ref_type == 'tag'
         run: pnpm --filter desktop exec electron-builder ${{ matrix.builder-target }} --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Package manual workflow artifacts
+        if: github.event_name == 'workflow_dispatch'
+        run: pnpm --filter desktop exec electron-builder ${{ matrix.builder-target }} --publish never
+
+      - name: Upload manual workflow artifacts
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: CavalloCode-${{ matrix.os }}
+          path: apps/desktop/dist/*
+          if-no-files-found: error
