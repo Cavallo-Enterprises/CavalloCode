@@ -5,6 +5,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { fork, ChildProcess } from 'child_process'
 import { compileProject, flashArduino, flashESP32, hardwareBuildEvents } from '../../../../packages/hardware-bridge/src/index'
+import { connectSerial, disconnectSerial, listPorts, sendSerialData, serialEvents } from '../../../../packages/hardware-bridge/src/serial'
 
 
 let extensionHostProcess: ChildProcess | null = null;
@@ -123,31 +124,16 @@ app.whenReady().then(() => {
     }
   })
 
-  // List available serial ports (stub; replace with node-serialport in real build)
-  ipcMain.handle('serial:list', async () => {
-    // Real impl: const { SerialPort } = await import('serialport');
-    // return await SerialPort.list();
-    return [
-      { path: 'COM3', manufacturer: 'Arduino LLC' },
-      { path: 'COM4', manufacturer: 'Silicon Labs (CP2102)' },
-    ];
-  });
-
-  ipcMain.handle('serial:connect', async (_event, port: string, baud: number) => {
-    console.log(`[MainProcess] Connecting to ${port} at ${baud}`);
-    // Spawn SerialPort connection here and pipe data back via mainWindow.webContents.send('serial:data', chunk)
-    return { success: true };
-  });
-
-  ipcMain.handle('serial:disconnect', async () => {
-    console.log('[MainProcess] Disconnecting serial');
-    return { success: true };
-  });
-
-  ipcMain.handle('serial:send', async (_event, data: string) => {
-    console.log('[MainProcess] Serial TX:', data);
-    return { success: true };
-  });
+  ipcMain.handle('serial:list', () => listPorts())
+  ipcMain.handle('serial:connect', (_event, port: string, baud: number) => connectSerial(port, baud))
+  ipcMain.handle('serial:disconnect', () => disconnectSerial())
+  ipcMain.handle('serial:send', (_event, data: string) => sendSerialData(data))
+  serialEvents.on('data', (chunk: string) => {
+    for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) window.webContents.send('serial:data-received', chunk)
+  })
+  serialEvents.on('error', (message: string) => {
+    for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) window.webContents.send('serial:error', message)
+  })
 
   ipcMain.handle('ext:list', async () => {
     return [

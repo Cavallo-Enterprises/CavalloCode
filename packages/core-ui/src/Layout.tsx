@@ -105,6 +105,7 @@ interface LayoutProps {
   activeFile: FileItem;
   onFileSelect: (file: FileItem) => void;
   terminalComponent?: React.ReactNode;
+  plotterComponent?: React.ReactNode;
   cursorPos?: { line: number; col: number };
   onCompile?: () => Promise<string>;
   onFlash?: () => Promise<string>;
@@ -127,6 +128,7 @@ export const Layout: React.FC<LayoutProps> = ({
   activeFile,
   onFileSelect,
   terminalComponent,
+  plotterComponent,
   cursorPos = { line: 1, col: 1 },
   onCompile,
   onFlash,
@@ -143,7 +145,7 @@ export const Layout: React.FC<LayoutProps> = ({
 }) => {
   const [activeActivity, setActiveActivity] = useState<'explorer' | 'hardware' | 'serial' | 'extensions' | 'settings'>('explorer');
   const [openFiles, setOpenFiles] = useState<FileItem[]>([DEFAULT_PROJECT_FILES[0], DEFAULT_PROJECT_FILES[1]]);
-  const [bottomTab, setBottomTab] = useState<'terminal' | 'build'>('terminal');
+  const [bottomTab, setBottomTab] = useState<'terminal' | 'plotter' | 'build'>('terminal');
   const [bottomOpen, setBottomOpen] = useState(true);
   const [buildLogs, setBuildLogs] = useState<string>('Ready. Click "Compile" or "Flash" to start build.\n');
   const [isBuilding, setIsBuilding] = useState(false);
@@ -772,6 +774,12 @@ export const Layout: React.FC<LayoutProps> = ({
                             Serial Monitor
                           </button>
                           <button
+                            onClick={() => setBottomTab('plotter')}
+                            style={{ background: 'transparent', border: 'none', borderBottom: bottomTab === 'plotter' ? '2px solid #007acc' : '2px solid transparent', color: bottomTab === 'plotter' ? '#fff' : '#888', padding: '4px 10px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.5px' }}
+                          >
+                            Serial Plotter
+                          </button>
+                          <button
                             onClick={() => setBottomTab('build')}
                             style={{
                               background: 'transparent',
@@ -804,9 +812,7 @@ export const Layout: React.FC<LayoutProps> = ({
 
                       {/* Panel Content */}
                       <div style={{ flex: 1, overflow: 'hidden' }}>
-                        {bottomTab === 'terminal' ? (
-                          terminalComponent
-                        ) : (
+                        {bottomTab === 'terminal' ? terminalComponent : bottomTab === 'plotter' ? plotterComponent : (
                           <div
                             style={{
                               height: '100%',
@@ -849,7 +855,7 @@ export const Layout: React.FC<LayoutProps> = ({
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <span>🔌 {activeBoard}</span>
-          <span>📡 {activePort}</span>
+          <span onClick={() => { setBottomTab('terminal'); setBottomOpen(true); }} title="Open Serial Monitor" style={{ cursor: 'pointer' }}>📡 {activePort}</span>
           <span>⚡ {activeBaud} baud</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <CheckCircle size={12} /> Ready

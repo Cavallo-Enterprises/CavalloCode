@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { Layout, CavalloMonacoEditor, DEFAULT_PROJECT_FILES, FileItem, Theme } from 'core-ui/src/index';
-import { WebGLTerminal } from 'terminal/src/index';
+import { SerialMonitor, SerialPlotter } from 'terminal/src/index';
 
 function App(): JSX.Element {
   const [theme, setTheme] = useState<Theme>('vs-dark');
@@ -110,11 +110,12 @@ function App(): JSX.Element {
         return result.output;
       }}
       terminalComponent={
-        <WebGLTerminal
+        <SerialMonitor
           onPortSelect={(p) => setActivePort(p)}
           onBaudSelect={(b) => setActiveBaud(b)}
         />
       }
+      plotterComponent={<SerialPlotter />}
     >
       <CavalloMonacoEditor
         value={fileContents[activeFile.id] !== undefined ? fileContents[activeFile.id] : activeFile.content}

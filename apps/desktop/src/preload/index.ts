@@ -15,12 +15,26 @@ const api = {
   writeFile: (path: string, content: string) => ipcRenderer.invoke('fs:write-file', path, content),
   readDirectory: (path: string) => ipcRenderer.invoke('fs:read-directory', path),
 
-  // Subscribe to incoming serial data from main
   onSerialData: (callback: (data: string) => void) => {
-    ipcRenderer.on('serial:data', (_event, data) => callback(data));
+    const listener = (_event: Electron.IpcRendererEvent, data: string) => callback(data)
+    ipcRenderer.on('serial:data-received', listener)
+    return () => ipcRenderer.removeListener('serial:data-received', listener)
   },
-  removeSerialDataListener: () => {
-    ipcRenderer.removeAllListeners('serial:data');
+  onSerialError: (callback: (message: string) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, message: string) => callback(message)
+    ipcRenderer.on('serial:error', listener)
+    return () => ipcRenderer.removeListener('serial:error', listener)
+  },
+  cavallo: {
+    listPorts: () => ipcRenderer.invoke('serial:list'),
+    connectSerial: (port: string, baud: number) => ipcRenderer.invoke('serial:connect', port, baud),
+    disconnectSerial: () => ipcRenderer.invoke('serial:disconnect'),
+    sendSerialData: (data: string) => ipcRenderer.invoke('serial:send', data),
+    onSerialData: (callback: (data: string) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, data: string) => callback(data)
+      ipcRenderer.on('serial:data-received', listener)
+      return () => ipcRenderer.removeListener('serial:data-received', listener)
+    },
   },
 
   // Window controls
@@ -48,6 +62,7 @@ if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('api', api)
+    contextBridge.exposeInMainWorld('cavallo', api.cavallo)
   } catch (error) {
     console.error(error)
   }
@@ -56,5 +71,7 @@ if (process.contextIsolated) {
   window.electron = electronAPI
   // @ts-ignore
   window.api = api
+  // @ts-ignore
+  window.cavallo = api.cavallo
 }
 
