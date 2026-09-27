@@ -5,7 +5,7 @@ import MonacoEditor, { loader } from '@monaco-editor/react';
 // Configure loader to use locally bundled Monaco instead of CDN (prevents 15-second timeout and offline blank screen)
 loader.config({ monaco });
 
-type Theme = 'vs-dark' | 'vs' | 'hc-black';
+type Theme = 'vs-dark' | 'vs' | 'hc-black' | 'cavallo-ocean' | 'cavallo-forest';
 type Language = 'cpp' | 'python' | 'c' | 'plaintext';
 
 const LANGUAGES: { label: string; value: Language }[] = [
@@ -122,6 +122,18 @@ export const CavalloMonacoEditor = ({
   const activeLanguage = propLanguage || internalLanguage;
   const activeCode = value !== undefined ? value : internalCode;
 
+  React.useEffect(() => {
+    monaco.editor.defineTheme('cavallo-ocean', {
+      base: 'vs-dark', inherit: true, rules: [],
+      colors: { 'editor.background': '#10232f', 'editor.foreground': '#d7edf5', 'editorLineNumber.foreground': '#628394', 'editorCursor.foreground': '#67d6e8', 'editor.selectionBackground': '#164b60' }
+    });
+    monaco.editor.defineTheme('cavallo-forest', {
+      base: 'vs-dark', inherit: true, rules: [],
+      colors: { 'editor.background': '#18271f', 'editor.foreground': '#e0eee4', 'editorLineNumber.foreground': '#728c7b', 'editorCursor.foreground': '#a6df87', 'editor.selectionBackground': '#31563b' }
+    });
+    monaco.editor.setTheme(theme);
+  }, [theme]);
+
   const handleLanguageChange = (lang: Language) => {
     if (onLanguageChange) {
       onLanguageChange(lang);
@@ -156,6 +168,22 @@ export const CavalloMonacoEditor = ({
       onBreakpointsChange?.(next);
     });
   };
+
+  React.useEffect(() => {
+    const listener = (event: Event) => {
+      const action = (event as CustomEvent<string>).detail;
+      const editor = editorRef.current;
+      if (!editor || typeof action !== 'string') return;
+      const monacoAction: Record<string, string> = {
+        undo: 'undo', redo: 'redo', cut: 'editor.action.clipboardCutAction', copy: 'editor.action.clipboardCopyAction',
+        paste: 'editor.action.clipboardPasteAction', find: 'actions.find', replace: 'editor.action.startFindReplaceAction',
+        selectAll: 'editor.action.selectAll', expandSelection: 'editor.action.smartSelect.expand', shrinkSelection: 'editor.action.smartSelect.shrink'
+      };
+      void editor.getAction(monacoAction[action])?.run();
+    };
+    window.addEventListener('cavallo:editor-command', listener);
+    return () => window.removeEventListener('cavallo:editor-command', listener);
+  }, []);
 
   React.useEffect(() => {
     if (!editorRef.current) return;
@@ -205,7 +233,7 @@ export const CavalloMonacoEditor = ({
           ))}
           <div style={{ flex: 1 }} />
           <span style={{ marginRight: 4 }}>Theme:</span>
-          {(['vs-dark', 'vs', 'hc-black'] as Theme[]).map((t) => (
+          {(['vs-dark', 'vs', 'hc-black', 'cavallo-ocean', 'cavallo-forest'] as Theme[]).map((t) => (
             <button
               key={t}
               onClick={() => onThemeChange?.(t)}

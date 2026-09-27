@@ -17,6 +17,7 @@ function App(): ReactElement {
   const [activeBoard, setActiveBoard] = useState(() => localStorage.getItem('cavallo.board') || 'ESP32 Dev Module');
   const [activePort, setActivePort] = useState('');
   const [activeBaud, setActiveBaud] = useState(() => Number(localStorage.getItem('cavallo.baud')) || 115200);
+  const [platformioPath, setPlatformioPath] = useState(() => localStorage.getItem('cavallo.platformioPath') || '');
   const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null);
   const [workspaceFiles, setWorkspaceFiles] = useState<FileItem[]>(DEFAULT_PROJECT_FILES);
   const [dirtyFileIds, setDirtyFileIds] = useState<string[]>([]);
@@ -30,7 +31,8 @@ function App(): ReactElement {
     localStorage.setItem('cavallo.theme', theme);
     localStorage.setItem('cavallo.board', activeBoard);
     localStorage.setItem('cavallo.baud', String(activeBaud));
-  }, [theme, activeBoard, activeBaud]);
+    localStorage.setItem('cavallo.platformioPath', platformioPath);
+  }, [theme, activeBoard, activeBaud, platformioPath]);
 
   useEffect(() => window.api?.onDebugOutput?.((event) => {
     setDebugOutput((current) => (current + event.text).slice(-20000));
@@ -135,6 +137,8 @@ function App(): ReactElement {
       activeBoard={activeBoard}
       activePort={activePort}
       activeBaud={activeBaud}
+      platformioPath={platformioPath}
+      onPlatformioPathChange={setPlatformioPath}
       workspaceRoot={workspaceRoot}
       workspaceFiles={workspaceFiles}
       dirtyFileIds={dirtyFileIds}
@@ -176,7 +180,7 @@ function App(): ReactElement {
       onInsertAI={handleInsertAI}
       onCompile={async () => {
         if (!workspaceRoot) throw new Error('Open a project folder before compiling.');
-        const result = await window.api.compileProject(workspaceRoot, activeBoard);
+        const result = await window.api.compileProject(workspaceRoot, activeBoard, platformioPath);
         if (!result.success) throw new Error('PlatformIO compilation failed.');
         return result.output;
       }}
@@ -184,7 +188,7 @@ function App(): ReactElement {
         if (!workspaceRoot) throw new Error('Open a project folder before uploading.');
         if (!activePort) throw new Error('Select a serial port before uploading.');
         const root = workspaceRoot;
-        const build = await window.api.compileProject(root, activeBoard);
+        const build = await window.api.compileProject(root, activeBoard, platformioPath);
         if (!build.success) throw new Error('Compilation failed; upload canceled.');
         const environment = /pico|rp2040/i.test(activeBoard) ? 'pico' : /arduino\s+nano/i.test(activeBoard) ? 'nanoatmega328' : /arduino\s+uno/i.test(activeBoard) ? 'uno' : 'esp32dev';
         const extension = /pico|rp2040/i.test(activeBoard) ? 'uf2' : /arduino|uno|nano/i.test(activeBoard) ? 'hex' : 'bin';

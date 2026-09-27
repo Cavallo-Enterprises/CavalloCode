@@ -47,7 +47,9 @@ const api = {
   isWindowMaximized: () => ipcRenderer.invoke('window:isMaximized'),
 
   // Hardware operations
-  compileProject: (projectPath: string, board?: string) => ipcRenderer.invoke('hardware:compile', projectPath, board),
+  compileProject: (projectPath: string, board?: string, platformioPath?: string) => ipcRenderer.invoke('hardware:compile', projectPath, board, platformioPath),
+  openNewWindow: () => ipcRenderer.invoke('window:new'),
+  openExternal: (url: string) => ipcRenderer.invoke('shell:open-external', url),
   flashHardware: (board: string, port: string, artifactPath: string) => ipcRenderer.invoke('hardware:flash', board, port, artifactPath),
   flashESP32: (port: string, binPath: string) => ipcRenderer.invoke('hardware:flash-esp32', port, binPath),
   flashArduino: (board: 'uno' | 'nano', port: string, hexPath: string) => ipcRenderer.invoke('hardware:flash-arduino', board, port, hexPath),
@@ -86,6 +88,7 @@ const api = {
 
   // Extension host
   getInstalledExtensions: () => ipcRenderer.invoke('ext:list'),
+  executeExtensionCommand: (commandId: string) => ipcRenderer.invoke('ext:execute-command', commandId),
 }
 
 

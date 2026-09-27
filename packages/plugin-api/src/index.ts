@@ -15,8 +15,13 @@ export interface CavalloPlugin {
   activate(context: ExtensionContext): void;
   deactivate(): void;
   registerBoard?(): CavalloBoardDefinition[];
+  registerThemes?(): CavalloThemeDefinition[];
+  registerCommands?(): CavalloCommandDefinition[];
   uploadHandler?(port: string, file: string): Promise<boolean>;
 }
+
+export interface CavalloThemeDefinition { id: string; name: string }
+export interface CavalloCommandDefinition { id: string; title: string; description: string; execute(): string | Promise<string> }
 
 export type CavalloAIProvider = 'openai' | 'gemini' | 'anthropic' | 'ollama';
 

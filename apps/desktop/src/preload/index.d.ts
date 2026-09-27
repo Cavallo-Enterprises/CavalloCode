@@ -28,7 +28,9 @@ declare global {
     writeFile(path: string, content: string): Promise<void>
     readDirectory(path: string): Promise<WorkspaceEntry[]>
     createProjectTemplate(name: string, template: 'esp32' | 'arduino-uno' | 'arduino-nano' | 'pico'): Promise<string | null>
-    compileProject(projectPath: string, board?: string): Promise<{ success: boolean; output: string }>
+    compileProject(projectPath: string, board?: string, platformioPath?: string): Promise<{ success: boolean; output: string }>
+    openNewWindow(): Promise<void>
+    openExternal(url: string): Promise<void>
     flashHardware(board: string, port: string, artifactPath: string): Promise<{ success: boolean; output: string }>
     flashESP32(port: string, binPath: string): Promise<{ success: boolean; output: string }>
     flashArduino(board: 'uno' | 'nano', port: string, hexPath: string): Promise<{ success: boolean; output: string }>

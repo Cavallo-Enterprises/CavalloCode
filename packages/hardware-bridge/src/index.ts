@@ -26,7 +26,9 @@ function runTool(command: string, args: string[]): Promise<{ success: boolean; o
     child.on('error', (error) => {
       const spawnError = error as NodeJS.ErrnoException
       const message = spawnError.code === 'ENOENT'
-        ? `[${command}] executable not found. Install it and add it to PATH, or configure its executable path.`
+        ? command.toLowerCase().includes('platformio')
+          ? '[PlatformIO] CLI executable not found. Install PlatformIO Core, restart CavalloCode so PATH changes are picked up, or set the full executable path in Settings → Hardware.'
+          : `[${command}] executable not found. Install it and add it to PATH, or configure its executable path.`
         : `[${command}] ${error.message}`
       hardwareBuildEvents.emit('log', message)
       if (!settled) { settled = true; resolve({ success: false, output: output + message + '\n' }) }
@@ -38,14 +40,14 @@ function runTool(command: string, args: string[]): Promise<{ success: boolean; o
   })
 }
 
-export async function compileProject(projectPath: string, board = '') {
+export async function compileProject(projectPath: string, board = '', platformioPath = '') {
   if (/pico|rp2040/i.test(board)) {
     const configure = await runTool(process.env.CAVALLO_CMAKE_PATH || 'cmake', ['-S', projectPath, '-B', join(projectPath, 'build')])
     if (!configure.success) return configure
     const build = await runTool(process.env.CAVALLO_CMAKE_PATH || 'cmake', ['--build', join(projectPath, 'build')])
     return { success: build.success, output: configure.output + build.output }
   }
-  return runTool(process.env.CAVALLO_PLATFORMIO_PATH || 'platformio', ['run', '--project-dir', projectPath])
+  return runTool(platformioPath || process.env.CAVALLO_PLATFORMIO_PATH || 'platformio', ['run', '--project-dir', projectPath])
 }
 
 export function flashESP32(port: string, binPath: string) {

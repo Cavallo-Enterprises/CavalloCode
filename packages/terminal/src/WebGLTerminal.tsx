@@ -132,7 +132,7 @@ export const WebGLTerminal: React.FC<WebGLTerminalProps> = ({ onPortSelect, onBa
   }, []);
 
   const handleClear = () => {
-    xtermRef.current?.clear();
+    xtermRef.current?.reset();
   };
 
   const handleToggleConnect = async () => {
@@ -181,11 +181,22 @@ export const WebGLTerminal: React.FC<WebGLTerminalProps> = ({ onPortSelect, onBa
   useEffect(() => {
     const refresh = () => { void refreshPortsRef.current(); };
     const toggle = () => { void toggleConnectionRef.current(); };
+    const clear = () => xtermRef.current?.reset();
+    const kill = () => {
+      void (window as any).cavallo?.disconnectSerial?.();
+      setIsConnected(false);
+      onConnectionChangeRef.current?.(false);
+      xtermRef.current?.writeln('\r\n\x1b[33m[Serial session stopped]\x1b[0m');
+    };
     window.addEventListener('cavallo:refresh-ports', refresh);
     window.addEventListener('cavallo:toggle-serial', toggle);
+    window.addEventListener('cavallo:clear-terminal', clear);
+    window.addEventListener('cavallo:kill-terminal', kill);
     return () => {
       window.removeEventListener('cavallo:refresh-ports', refresh);
       window.removeEventListener('cavallo:toggle-serial', toggle);
+      window.removeEventListener('cavallo:clear-terminal', clear);
+      window.removeEventListener('cavallo:kill-terminal', kill);
     };
   }, []);
 

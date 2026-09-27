@@ -1,0 +1,25 @@
+html {
+  --cc-root: #181818; --cc-surface: #1e1e1e; --cc-sidebar: #252526; --cc-tab: #2d2d2d;
+  --cc-activity: #333333; --cc-control: #333333; --cc-border: #3c3c3c; --cc-border-soft: #454545;
+  --cc-foreground: #cccccc; --cc-foreground-strong: #ffffff; --cc-muted: #888888; --cc-selected: #37373d;
+}
+html[data-cavallo-theme='vs'] {
+  --cc-root: #f3f3f3; --cc-surface: #ffffff; --cc-sidebar: #f3f3f3; --cc-tab: #e8e8e8;
+  --cc-activity: #e5e5e5; --cc-control: #e8e8e8; --cc-border: #d4d4d4; --cc-border-soft: #c8c8c8;
+  --cc-foreground: #333333; --cc-foreground-strong: #111111; --cc-muted: #666666; --cc-selected: #d6eaf7;
+}
+html[data-cavallo-theme='hc-black'] {
+  --cc-root: #000000; --cc-surface: #000000; --cc-sidebar: #000000; --cc-tab: #000000;
+  --cc-activity: #000000; --cc-control: #000000; --cc-border: #ffffff; --cc-border-soft: #ffffff;
+  --cc-foreground: #ffffff; --cc-foreground-strong: #ffffff; --cc-muted: #eeeeee; --cc-selected: #003f5f;
+}
+html[data-cavallo-theme='cavallo-ocean'] {
+  --cc-root: #0b1b26; --cc-surface: #10232f; --cc-sidebar: #142b39; --cc-tab: #1a3544;
+  --cc-activity: #183747; --cc-control: #1a3544; --cc-border: #315263; --cc-border-soft: #426477;
+  --cc-foreground: #d7edf5; --cc-foreground-strong: #ffffff; --cc-muted: #8daebb; --cc-selected: #164b60;
+}
+html[data-cavallo-theme='cavallo-forest'] {
+  --cc-root: #111c16; --cc-surface: #18271f; --cc-sidebar: #1e3026; --cc-tab: #293b30;
+  --cc-activity: #203629; --cc-control: #293b30; --cc-border: #3b5545; --cc-border-soft: #4c6755;
+  --cc-foreground: #e0eee4; --cc-foreground-strong: #ffffff; --cc-muted: #9db2a3; --cc-selected: #31563b;
+}

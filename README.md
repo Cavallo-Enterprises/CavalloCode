@@ -14,13 +14,19 @@ CavalloCode is currently under active development.
 
 The architecture and core application are being developed before expanding platform-specific tooling and hardware integrations. APIs, package boundaries, extension interfaces, and internal implementation details may change during development.
 
+## Desktop setup and hardware toolchains
+
+Serial Monitor, Serial Plotter, and Build Console run inside the desktop app. Firmware compilation still requires a local compiler: install [PlatformIO Core](https://docs.platformio.org/en/latest/core/installation/index.html) for ESP32/Arduino projects, or configure its CLI executable under **Settings → Hardware** if it is not on `PATH`. A missing CLI is reported as a build error; CavalloCode does not bundle PlatformIO itself. New Window is available under **File**. Keyboard shortcuts and built-in themes are listed under **Settings**.
+
+The extension authoring guide is [docs/EXTENSION_DEVELOPMENT.md](docs/EXTENSION_DEVELOPMENT.md).
+
 ## Overview & Key Features
 
 CavalloCode brings VS Code-grade architecture and ergonomics to Embedded Systems and Hardware Engineering:
 
-- **Process-Isolated Microkernel**: Electron Main Process, context-isolated React Renderer, and an out-of-process Node.js Extension Host communicating over JSON-RPC.
+- **Extension Host**: Electron Main Process manages built-in extension activation and disposal; the renderer accesses extension metadata and commands through IPC.
 - **Embedded Monaco Editor**: Full syntax highlighting and code editing for C++, C, Python, and MicroPython, bundled 100% locally with zero CDN dependencies and fault-tolerant ErrorBoundary recovery.
-- **Hardware WebGL Serial Terminal**: High-throughput hardware monitor built on `xterm.js` and `xterm-addon-webgl` with dynamic baud rate selection (9600 to 1,152,000 baud), auto-scroll, timestamps, and port enumeration.
+- **Serial Terminal and Plotter**: Serial monitor built on `xterm.js` with dynamic baud selection, auto-scroll, port enumeration, and a rolling numeric plotter.
 - **Modern VS Code UI Shell**: Collapsible file tree explorer, application menubar, hardware status bar (active board, serial port, baud rate), and interactive resizable editor/terminal splits.
 - **Modular Extension System**: Built-in architecture packs for ESP32, Arduino AVR, and Raspberry Pi Pico (RP2040).
 - **Production-Ready Windows Packaging**: One-click NSIS desktop installer and portable `.exe` generation via `electron-builder`.

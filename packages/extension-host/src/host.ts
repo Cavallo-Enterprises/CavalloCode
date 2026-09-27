@@ -2,7 +2,7 @@ import type { CavalloBoardDefinition, CavalloPlugin, ExtensionContext } from '..
 import { dirname, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-interface ActivePlugin { id: string; path: string; plugin: CavalloPlugin; boards: CavalloBoardDefinition[]; subscriptions: ExtensionContext['subscriptions'] }
+interface ActivePlugin { id: string; path: string; plugin: CavalloPlugin; boards: CavalloBoardDefinition[]; themes: NonNullable<ReturnType<NonNullable<CavalloPlugin['registerThemes']>>>; commands: NonNullable<ReturnType<NonNullable<CavalloPlugin['registerCommands']>>>; subscriptions: ExtensionContext['subscriptions'] }
 
 export class ExtensionHostManager {
   private readonly plugins = new Map<string, ActivePlugin>()
@@ -12,7 +12,7 @@ export class ExtensionHostManager {
     const subscriptions: ExtensionContext['subscriptions'] = []
     const context: ExtensionContext = { subscriptions, extensionPath }
     plugin.activate(context)
-    const active = { id, path: extensionPath, plugin, boards: plugin.registerBoard?.() || [], subscriptions }
+    const active = { id, path: extensionPath, plugin, boards: plugin.registerBoard?.() || [], themes: plugin.registerThemes?.() || [], commands: plugin.registerCommands?.() || [], subscriptions }
     this.plugins.set(id, active)
     return { id, boards: active.boards }
   }
@@ -33,7 +33,15 @@ export class ExtensionHostManager {
   }
 
   listPlugins() {
-    return [...this.plugins.values()].map(({ id, path, boards }) => ({ id, path, boards }))
+    return [...this.plugins.values()].map(({ id, path, boards, themes, commands }) => ({ id, path, boards, themes, commands: commands.map(({ execute: _execute, ...command }) => command) }))
+  }
+
+  async executeCommand(id: string) {
+    for (const plugin of this.plugins.values()) {
+      const command = plugin.commands.find((candidate) => candidate.id === id)
+      if (command) return command.execute()
+    }
+    throw new Error(`Extension command not found: ${id}`)
   }
 
   async dispose() {

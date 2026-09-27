@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Allotment } from 'allotment';
 import 'allotment/dist/style.css';
+import './theme.css';
 import {
   Files,
   Cpu,
@@ -31,7 +32,7 @@ import {
 } from 'lucide-react';
 import { CommandPalette } from './CommandPalette';
 
-export type Theme = 'vs-dark' | 'vs' | 'hc-black';
+export type Theme = 'vs-dark' | 'vs' | 'hc-black' | 'cavallo-ocean' | 'cavallo-forest';
 
 export interface FileItem {
   id: string;
@@ -123,6 +124,8 @@ interface LayoutProps {
   activeBoard?: string;
   activePort?: string;
   activeBaud?: number;
+  platformioPath?: string;
+  onPlatformioPathChange?: (path: string) => void;
   onPortChange?: (port: string) => void;
   onBaudChange?: (baud: number) => void;
   workspaceRoot?: string | null;
@@ -159,6 +162,8 @@ export const Layout = ({
   activeBoard = 'ESP32 Dev Module',
   activePort = '',
   activeBaud = 115200,
+  platformioPath = '',
+  onPlatformioPathChange,
   onPortChange,
   onBaudChange,
   workspaceRoot: workspaceRootProp,
@@ -197,9 +202,10 @@ export const Layout = ({
   const [aiInput, setAiInput] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
   const [aiConfig, setAiConfig] = useState<{ provider: 'openai' | 'gemini' | 'anthropic' | 'ollama'; apiKey: string; hasApiKey: boolean; model: string; endpoint: string }>({ provider: 'openai', apiKey: '', hasApiKey: false, model: 'gpt-4o-mini', endpoint: 'http://localhost:11434' });
-  const [settingsSection, setSettingsSection] = useState<'general' | 'appearance' | 'hardware' | 'ai' | 'extensions'>('general');
+  const [settingsSection, setSettingsSection] = useState<'general' | 'appearance' | 'hardware' | 'ai' | 'extensions' | 'shortcuts'>('general');
   const [settingsMessage, setSettingsMessage] = useState('');
-  const [installedExtensions, setInstalledExtensions] = useState<Array<{ id: string; path: string; boards: Array<{ id: string; name: string }> }>>([]);
+  const [installedExtensions, setInstalledExtensions] = useState<Array<{ id: string; path: string; boards: Array<{ id: string; name: string }>; themes?: Array<{ id: string; name: string }>; commands?: Array<{ id: string; title: string; description: string }> }>>([]);
+  const [extensionOutput, setExtensionOutput] = useState('');
   const [hardwarePorts, setHardwarePorts] = useState<Array<{ path: string; manufacturer?: string; vendorId?: string; productId?: string }>>([]);
   const [portError, setPortError] = useState('');
   const [debugToolbarVisible, setDebugToolbarVisible] = useState(false);
@@ -211,6 +217,10 @@ export const Layout = ({
   useEffect(() => { (window as any).api?.getAIConfig?.().then(setAiConfig).catch(console.warn); }, []);
   useEffect(() => { (window as any).api?.getInstalledExtensions?.().then(setInstalledExtensions).catch(console.warn); }, []);
   useEffect(() => {
+    document.documentElement.dataset.cavalloTheme = theme;
+    return () => { delete document.documentElement.dataset.cavalloTheme; };
+  }, [theme]);
+  useEffect(() => {
     if (activeActivity !== 'hardware') return;
     void refreshHardwarePorts();
   }, [activeActivity]);
@@ -219,11 +229,17 @@ export const Layout = ({
   useEffect(() => {
     const openSerial = () => { setActiveActivity('serial'); setBottomTab('terminal'); setBottomOpen(true); };
     const openDebug = () => { setActiveActivity('debug'); setDebugToolbarVisible(true); };
+    const openExtensionGuide = () => { setSettingsSection('extensions'); setActiveActivity('settings'); };
+    const openShortcuts = () => { setSettingsSection('shortcuts'); setActiveActivity('settings'); };
     window.addEventListener('cavallo:open-serial', openSerial);
     window.addEventListener('cavallo:open-debug', openDebug);
+    window.addEventListener('cavallo:extension-guide', openExtensionGuide);
+    window.addEventListener('cavallo:keyboard-shortcuts', openShortcuts);
     return () => {
       window.removeEventListener('cavallo:open-serial', openSerial);
       window.removeEventListener('cavallo:open-debug', openDebug);
+      window.removeEventListener('cavallo:extension-guide', openExtensionGuide);
+      window.removeEventListener('cavallo:keyboard-shortcuts', openShortcuts);
     };
   }, []);
 
@@ -264,6 +280,13 @@ export const Layout = ({
     }
   };
 
+  const runExtensionCommand = async (id: string) => {
+    try {
+      const output = await (window as any).api?.executeExtensionCommand?.(id);
+      setExtensionOutput(String(output || 'Extension command completed.'));
+    } catch (error: any) { setExtensionOutput(error?.message || String(error)); }
+  };
+
   const isDark = theme !== 'vs';
 
   // Window controls
@@ -301,6 +324,21 @@ export const Layout = ({
         event.preventDefault();
         setActiveActivity('settings');
       }
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'p') {
+        event.preventDefault(); setCommandPaletteOpen(true);
+      }
+    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'b') {
+        event.preventDefault(); setBottomOpen((open) => !open);
+      }
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'e') {
+        event.preventDefault(); setActiveActivity('explorer');
+      }
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'x') { event.preventDefault(); setActiveActivity('extensions'); }
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'd') { event.preventDefault(); setActiveActivity('debug'); setDebugToolbarVisible(true); }
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'm') { event.preventDefault(); setActiveActivity('serial'); setBottomTab('terminal'); setBottomOpen(true); }
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'b') { event.preventDefault(); window.dispatchEvent(new Event('cavallo:compile')); }
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'u') { event.preventDefault(); window.dispatchEvent(new Event('cavallo:flash')); }
+      if (event.key === 'F5') { event.preventDefault(); onDebugAction?.('continue'); }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -371,15 +409,29 @@ export const Layout = ({
   };
 
   const MENUS: Record<string, string[]> = {
-    File: ['New File', 'Open File...', 'Save', 'Save All', 'Exit'],
+    File: ['New Window', 'Open Folder...', 'Save', 'Exit'],
     Edit: ['Undo', 'Redo', 'Cut', 'Copy', 'Paste', 'Find', 'Replace'],
     Selection: ['Select All', 'Expand Selection', 'Shrink Selection'],
     View: ['Command Palette...', 'Explorer', 'Hardware Manager', 'Serial Monitor', 'Toggle Panel'],
     Hardware: ['Compile / Verify', 'Upload / Flash', 'Auto-Detect Ports', 'Select Board'],
     Run: ['Start Debugging', 'Run Without Debugging'],
     Terminal: ['New Terminal', 'Clear Terminal', 'Kill Terminal'],
-    Help: ['Check for Updates...', 'Documentation', 'About CavalloCode']
+    Help: ['Keyboard Shortcuts', 'Extension Development Guide', 'Check for Updates...', 'Documentation', 'About CavalloCode']
   };
+
+  useEffect(() => {
+    const compile = () => { void handleCompile(); };
+    const flash = () => { void handleFlash(); };
+    const startDebug = () => onStartDebug?.(gdbPath);
+    window.addEventListener('cavallo:compile', compile);
+    window.addEventListener('cavallo:flash', flash);
+    window.addEventListener('cavallo:start-debug', startDebug);
+    return () => {
+      window.removeEventListener('cavallo:compile', compile);
+      window.removeEventListener('cavallo:flash', flash);
+      window.removeEventListener('cavallo:start-debug', startDebug);
+    };
+  }, [handleCompile, handleFlash, onStartDebug, gdbPath]);
 
   return (
     <div
@@ -388,8 +440,8 @@ export const Layout = ({
         flexDirection: 'column',
         height: '100vh',
         width: '100vw',
-        backgroundColor: '#181818',
-        color: '#cccccc',
+        backgroundColor: 'var(--cc-root)',
+        color: 'var(--cc-foreground)',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
         overflow: 'hidden',
         userSelect: 'none'
@@ -399,8 +451,8 @@ export const Layout = ({
       <div
         style={{
           height: '30px',
-          backgroundColor: '#1e1e1e',
-          borderBottom: '1px solid #3c3c3c',
+          backgroundColor: 'var(--cc-surface)',
+          borderBottom: '1px solid var(--cc-border)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -425,8 +477,8 @@ export const Layout = ({
               <button
                 onClick={() => setActiveMenu(activeMenu === menu ? null : menu)}
                 style={{
-                  background: activeMenu === menu ? '#333333' : 'transparent',
-                  color: activeMenu === menu ? '#ffffff' : '#cccccc',
+                  background: activeMenu === menu ? 'var(--cc-activity)' : 'transparent',
+                  color: activeMenu === menu ? 'var(--cc-foreground-strong)' : 'var(--cc-foreground)',
                   border: 'none',
                   padding: '4px 8px',
                   fontSize: '12px',
@@ -446,8 +498,8 @@ export const Layout = ({
                     position: 'absolute',
                     top: '30px',
                     left: 0,
-                    backgroundColor: '#252526',
-                    border: '1px solid #454545',
+                    backgroundColor: 'var(--cc-sidebar)',
+                    border: '1px solid var(--cc-border-soft)',
                     minWidth: '160px',
                     zIndex: 10000,
                     padding: '4px 0'
@@ -461,6 +513,18 @@ export const Layout = ({
                         setActiveMenu(null);
                         if (item.includes('Command Palette')) setCommandPaletteOpen(true);
                         if (item === 'Save') onSaveFile?.();
+                        if (item === 'New Window') void (window as any).api?.openNewWindow?.();
+                        if (item === 'Open Folder...') onOpenFolder?.();
+                        if (item === 'Exit') void (window as any).api?.closeWindow?.();
+                        if (menu === 'Edit' || menu === 'Selection') {
+                          const commands: Record<string, string> = { Undo: 'undo', Redo: 'redo', Cut: 'cut', Copy: 'copy', Paste: 'paste', Find: 'find', Replace: 'replace', 'Select All': 'selectAll', 'Expand Selection': 'expandSelection', 'Shrink Selection': 'shrinkSelection' };
+                          const command = commands[item]; if (command) window.dispatchEvent(new CustomEvent('cavallo:editor-command', { detail: command }));
+                        }
+                        if (item === 'Explorer') setActiveActivity('explorer');
+                        if (item === 'Hardware Manager') setActiveActivity('hardware');
+                        if (item === 'New Terminal') { setBottomOpen(true); setBottomTab('terminal'); setActiveActivity('serial'); }
+                        if (item === 'Clear Terminal') window.dispatchEvent(new Event('cavallo:clear-terminal'));
+                        if (item === 'Kill Terminal') window.dispatchEvent(new Event('cavallo:kill-terminal'));
                         if (item.includes('Compile')) handleCompile();
                         if (item.includes('Upload')) handleFlash();
                         if (item.includes('Toggle Panel')) setBottomOpen(!bottomOpen);
@@ -469,11 +533,17 @@ export const Layout = ({
                         if (item === 'Serial Monitor') { setActiveActivity('serial'); setBottomOpen(true); setBottomTab('terminal'); }
                         if (item === 'Select Theme' || item === 'Theme') setActiveActivity('settings');
                         if (item === 'Check for Updates...') void (window as any).api?.checkForUpdates?.();
+        if (item === 'Extension Development Guide') window.dispatchEvent(new Event('cavallo:extension-guide'));
+                        if (item === 'Keyboard Shortcuts') window.dispatchEvent(new Event('cavallo:keyboard-shortcuts'));
+                        if (item === 'Documentation') void (window as any).api?.openExternal?.('https://github.com/Cavallo-Enterprises/CavalloCode/blob/main/docs/EXTENSION_DEVELOPMENT.md');
+                        if (item === 'About CavalloCode') { setSettingsSection('general'); setActiveActivity('settings'); }
+                        if (item === 'Start Debugging') { setActiveActivity('debug'); setDebugToolbarVisible(true); window.dispatchEvent(new Event('cavallo:start-debug')); }
+                        if (item === 'Run Without Debugging') window.dispatchEvent(new Event('cavallo:compile'));
                       }}
                       style={{
                         padding: '6px 14px',
                         fontSize: '12px',
-                        color: '#cccccc',
+                        color: 'var(--cc-foreground)',
                         cursor: 'pointer'
                       }}
                       onMouseEnter={(e) => ((e.currentTarget as HTMLDivElement).style.backgroundColor = '#04395e')}
@@ -516,19 +586,19 @@ export const Layout = ({
             alignItems: 'center',
             justifyContent: 'center',
             gap: '8px',
-            backgroundColor: '#252526',
-            border: '1px solid #3c3c3c',
+            backgroundColor: 'var(--cc-sidebar)',
+            border: '1px solid var(--cc-border)',
             height: '22px',
             width: '380px',
             cursor: 'pointer',
             fontSize: '12px',
-            color: '#999999',
+            color: 'var(--cc-muted)',
             WebkitAppRegion: 'no-drag' as any
           }}
           onMouseEnter={(e) => ((e.currentTarget as HTMLDivElement).style.borderColor = '#007acc')}
-          onMouseLeave={(e) => ((e.currentTarget as HTMLDivElement).style.borderColor = '#3c3c3c')}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLDivElement).style.borderColor = 'var(--cc-border)')}
         >
-          <Search size={12} color="#888888" />
+          <Search size={12} color="var(--cc-muted)" />
           <span>CavalloCode — {activeFile.name} (Ctrl+Shift+P)</span>
         </div>
 
@@ -552,8 +622,8 @@ export const Layout = ({
         <div
           style={{
             width: '48px',
-            backgroundColor: '#333333',
-            borderRight: '1px solid #252526',
+            backgroundColor: 'var(--cc-activity)',
+            borderRight: '1px solid var(--cc-sidebar)',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -625,8 +695,8 @@ export const Layout = ({
               <div
                 style={{
                   height: '100%',
-                  backgroundColor: '#252526',
-                  borderRight: '1px solid #3c3c3c',
+                  backgroundColor: 'var(--cc-sidebar)',
+                  borderRight: '1px solid var(--cc-border)',
                   display: 'flex',
                   flexDirection: 'column',
                   overflow: 'hidden'
@@ -641,7 +711,7 @@ export const Layout = ({
                     color: '#bbbbbb',
                     letterSpacing: '0.8px',
                     textTransform: 'uppercase',
-                    borderBottom: '1px solid #3c3c3c',
+                    borderBottom: '1px solid var(--cc-border)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between'
@@ -667,7 +737,7 @@ export const Layout = ({
                           padding: '4px 12px',
                           fontSize: '12px',
                           fontWeight: 600,
-                          color: '#cccccc',
+                          color: 'var(--cc-foreground)',
                           display: 'flex',
                           alignItems: 'center',
                           gap: 6
@@ -676,7 +746,7 @@ export const Layout = ({
                         <ChevronDown size={14} />
                         <span>{workspaceRoot ? workspaceRoot.split(/[\\/]/).pop() : 'CAVALLO-WORKSPACE'}</span>
                       </div>
-                      <button onClick={onOpenFolder} style={{ ...sidebarBtnStyle, background: '#3c3c3c', margin: '4px 12px 8px', width: 'calc(100% - 24px)' }}>Open Folder</button>
+                      <button onClick={onOpenFolder} style={{ ...sidebarBtnStyle, background: 'var(--cc-border)', margin: '4px 12px 8px', width: 'calc(100% - 24px)' }}>Open Folder</button>
                       <div style={{ padding: '0 12px 8px', display: 'flex', flexDirection: 'column', gap: 5 }}>
                         <input value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} aria-label="New project name" style={debugInputStyle} />
                         <select value={newProjectTemplate} onChange={(event) => setNewProjectTemplate(event.target.value as typeof newProjectTemplate)} style={debugInputStyle}>
@@ -698,8 +768,8 @@ export const Layout = ({
                               alignItems: 'center',
                               gap: 6,
                               fontSize: '13px',
-                              color: isSelected ? '#ffffff' : '#cccccc',
-                              backgroundColor: isSelected ? '#37373d' : 'transparent',
+                              color: isSelected ? 'var(--cc-foreground-strong)' : 'var(--cc-foreground)',
+                              backgroundColor: isSelected ? 'var(--cc-selected)' : 'transparent',
                               borderLeft: isSelected ? '2px solid #007acc' : '2px solid transparent'
                             }}
                             onMouseEnter={(e) => {
@@ -724,23 +794,23 @@ export const Layout = ({
                   {activeActivity === 'hardware' && (
                     <div style={{ padding: '8px 12px', fontSize: '12px', display: 'flex', flexDirection: 'column', gap: 12 }}>
                       <div>
-                        <div style={{ color: '#888', marginBottom: 4 }}>TARGET BOARD</div>
+                        <div style={{ color: 'var(--cc-muted)', marginBottom: 4 }}>TARGET BOARD</div>
                         <select value={activeBoard} onChange={(event) => onBoardChange?.(event.target.value)} style={debugInputStyle}>
                           <option>ESP32 Dev Module</option><option>Arduino Uno</option><option>Arduino Nano</option><option>Raspberry Pi Pico</option>
                         </select>
                       </div>
                       <div>
-                        <div style={{ color: '#888', marginBottom: 4 }}>COMMUNICATION PORT</div>
+                        <div style={{ color: 'var(--cc-muted)', marginBottom: 4 }}>COMMUNICATION PORT</div>
                         <select value={activePort} onFocus={() => void refreshHardwarePorts()} onChange={(event) => onPortChange?.(event.target.value)} style={debugInputStyle}>
                           <option value="">Select a port</option>
                           {hardwarePorts.map((port) => <option key={port.path} value={port.path}>{port.path} — {port.manufacturer || port.vendorId || 'Serial device'}</option>)}
                         </select>
-                        <button onClick={() => void refreshHardwarePorts()} style={{ ...sidebarBtnStyle, background: '#3c3c3c', marginTop: 5 }}>Refresh Ports</button>
+                        <button onClick={() => void refreshHardwarePorts()} style={{ ...sidebarBtnStyle, background: 'var(--cc-border)', marginTop: 5 }}>Refresh Ports</button>
                         {portError && <div style={{ color: '#f48771', marginTop: 4 }}>{portError}</div>}
                       </div>
                       <div>
-                        <div style={{ color: '#888', marginBottom: 4 }}>FLASH BAUD RATE</div>
-                        <div style={{ padding: '6px 8px', background: '#1e1e1e', border: '1px solid #3c3c3c', color: '#fff' }}>
+                        <div style={{ color: 'var(--cc-muted)', marginBottom: 4 }}>FLASH BAUD RATE</div>
+                        <div style={{ padding: '6px 8px', background: 'var(--cc-surface)', border: '1px solid var(--cc-border)', color: 'var(--cc-foreground-strong)' }}>
                           ⚡ {activeBaud} baud
                         </div>
                       </div>
@@ -789,12 +859,12 @@ export const Layout = ({
                         <button disabled={aiConfig.provider !== 'ollama' && !aiConfig.hasApiKey && !aiConfig.apiKey.trim()} onClick={() => askAssistant('Generate reusable embedded driver boilerplate for the sensor or actuator described in the current conversation.')} style={aiQuickButtonStyle}>🛠️ Generate Driver Code</button>
                       </div>
                       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        {aiMessages.map((message, index) => <div key={index} style={{ padding: 8, background: message.role === 'assistant' ? '#1e1e1e' : '#263746', color: '#d4d4d4', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                        {aiMessages.map((message, index) => <div key={index} style={{ padding: 8, background: message.role === 'assistant' ? 'var(--cc-surface)' : '#263746', color: 'var(--cc-foreground)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
                           <div style={{ color: message.role === 'assistant' ? '#4ec9b0' : '#9cdcfe', fontWeight: 600, marginBottom: 4 }}>{message.role === 'assistant' ? 'AI Assistant' : 'You'}</div>
                           <pre style={{ margin: 0, whiteSpace: 'pre-wrap', font: 'inherit' }}>{message.text}</pre>
                           {message.role === 'assistant' && <div style={{ display: 'flex', gap: 5, marginTop: 6 }}><button onClick={() => onInsertAI?.(message.text, 'insert')} style={iconBtnStyle}><Code2 size={12} /> Insert into Editor</button><button onClick={() => onInsertAI?.(message.text, 'apply')} style={iconBtnStyle}>Apply Fix</button></div>}
                         </div>)}
-                        {!aiMessages.length && <div style={{ color: '#888', padding: 8 }}>Ask about firmware, boards, serial errors, or embedded drivers.</div>}
+                        {!aiMessages.length && <div style={{ color: 'var(--cc-muted)', padding: 8 }}>Ask about firmware, boards, serial errors, or embedded drivers.</div>}
                       </div>
                       <form onSubmit={(event) => { event.preventDefault(); const prompt = aiInput.trim(); if (prompt) { setAiInput(''); void askAssistant(prompt); } }} style={{ display: 'flex', gap: 5 }}>
                         <input value={aiInput} onChange={(event) => setAiInput(event.target.value)} placeholder={aiBusy ? 'AI Assistant is responding…' : 'Ask AI Assistant'} disabled={aiBusy || (aiConfig.provider !== 'ollama' && !aiConfig.hasApiKey && !aiConfig.apiKey.trim())} style={debugInputStyle} />
@@ -805,15 +875,15 @@ export const Layout = ({
 
                   {activeActivity === 'extensions' && (
                     <div style={{ padding: '8px 12px', fontSize: '12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <div style={{ color: '#888', marginBottom: 2 }}>LOADED EXTENSIONS ({installedExtensions.length})</div>
+                      <div style={{ color: 'var(--cc-muted)', marginBottom: 2 }}>LOADED EXTENSIONS ({installedExtensions.length})</div>
                       {installedExtensions.map((extension) => <ExtensionCard key={extension.id} name={extension.id} ver="Loaded" arch={extension.boards.map((board) => board.name).join(', ') || extension.path} />)}
-                      {!installedExtensions.length && <div style={{ color: '#888' }}>No extensions are currently loaded.</div>}
+                      {!installedExtensions.length && <div style={{ color: 'var(--cc-muted)' }}>No extensions are currently loaded.</div>}
                     </div>
                   )}
 
                   {activeActivity === 'settings' && (
                     <div style={{ padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                      {(['general', 'appearance', 'hardware', 'ai', 'extensions'] as const).map((section) => <button key={section} onClick={() => setSettingsSection(section)} style={{ ...settingsNavButtonStyle, background: settingsSection === section ? '#37373d' : 'transparent', borderLeft: settingsSection === section ? '2px solid #007acc' : '2px solid transparent' }}>{section === 'ai' ? 'AI Assistant' : section[0].toUpperCase() + section.slice(1)}</button>)}
+                      {(['general', 'appearance', 'hardware', 'ai', 'extensions', 'shortcuts'] as const).map((section) => <button key={section} onClick={() => setSettingsSection(section)} style={{ ...settingsNavButtonStyle, background: settingsSection === section ? 'var(--cc-selected)' : 'transparent', borderLeft: settingsSection === section ? '2px solid #007acc' : '2px solid transparent' }}>{section === 'ai' ? 'AI Assistant' : section === 'shortcuts' ? 'Keyboard Shortcuts' : section[0].toUpperCase() + section.slice(1)}</button>)}
                     </div>
                   )}
                 </div>
@@ -826,7 +896,7 @@ export const Layout = ({
                 {/* Top: Monaco Editor Area */}
                 <Allotment.Pane minSize={200}>
                   <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden' }}>
-                    {debugToolbarVisible && <div style={{ display: 'flex', alignItems: 'center', gap: 6, height: 30, padding: '0 8px', background: '#252526', borderBottom: '1px solid #3c3c3c', flexShrink: 0 }}>
+                    {debugToolbarVisible && <div style={{ display: 'flex', alignItems: 'center', gap: 6, height: 30, padding: '0 8px', background: 'var(--cc-sidebar)', borderBottom: '1px solid var(--cc-border)', flexShrink: 0 }}>
                       <span style={{ color: '#4ec9b0', fontSize: 11, fontWeight: 600, marginRight: 4 }}>DEBUG</span>
                       <button title="Continue" onClick={() => onDebugAction?.('continue')} style={iconBtnStyle}><Play size={13} /></button>
                       <button title="Pause" onClick={() => onDebugAction?.('pause')} style={iconBtnStyle}><Pause size={13} /></button>
@@ -840,11 +910,11 @@ export const Layout = ({
                     <div
                       style={{
                         height: '35px',
-                        backgroundColor: '#252526',
+                        backgroundColor: 'var(--cc-sidebar)',
                         display: 'flex',
                         alignItems: 'flex-end',
                         overflowX: 'auto',
-                        borderBottom: '1px solid #1e1e1e',
+                        borderBottom: '1px solid var(--cc-surface)',
                         flexShrink: 0
                       }}
                     >
@@ -857,9 +927,9 @@ export const Layout = ({
                             style={{
                               height: '34px',
                               padding: '0 12px',
-                              backgroundColor: isActive ? '#1e1e1e' : '#2d2d2d',
-                              color: isActive ? '#ffffff' : '#969696',
-                              borderRight: '1px solid #252526',
+                              backgroundColor: isActive ? 'var(--cc-surface)' : 'var(--cc-tab)',
+                              color: isActive ? 'var(--cc-foreground-strong)' : 'var(--cc-muted)',
+                              borderRight: '1px solid var(--cc-sidebar)',
                               borderTop: isActive ? '2px solid #007acc' : '2px solid transparent',
                               display: 'flex',
                               alignItems: 'center',
@@ -868,7 +938,7 @@ export const Layout = ({
                               cursor: 'pointer'
                             }}
                           >
-                            <FileCode size={13} color={isActive ? '#007acc' : '#888888'} />
+                            <FileCode size={13} color={isActive ? '#007acc' : 'var(--cc-muted)'} />
                             <span>{f.name}{dirtyFileIds.includes(f.id) ? ' •' : ''}</span>
                             <span
                               onClick={(e) => handleCloseTab(e, f)}
@@ -879,7 +949,7 @@ export const Layout = ({
                                 display: 'flex',
                                 alignItems: 'center'
                               }}
-                              onMouseEnter={(e) => ((e.currentTarget as HTMLSpanElement).style.backgroundColor = '#454545')}
+                              onMouseEnter={(e) => ((e.currentTarget as HTMLSpanElement).style.backgroundColor = 'var(--cc-border-soft)')}
                               onMouseLeave={(e) => ((e.currentTarget as HTMLSpanElement).style.backgroundColor = 'transparent')}
                             >
                               <X size={12} />
@@ -893,19 +963,19 @@ export const Layout = ({
                     <div
                       style={{
                         height: '22px',
-                        backgroundColor: '#1e1e1e',
+                        backgroundColor: 'var(--cc-surface)',
                         padding: '0 12px',
                         display: 'flex',
                         alignItems: 'center',
                         fontSize: '11px',
-                        color: '#888888',
-                        borderBottom: '1px solid #2d2d2d',
+                        color: 'var(--cc-muted)',
+                        borderBottom: '1px solid var(--cc-tab)',
                         flexShrink: 0
                       }}
                     >
                       <span>src</span>
                       <ChevronRight size={12} style={{ margin: '0 4px' }} />
-                      <span style={{ color: '#cccccc' }}>{activeFile.name}</span>
+                      <span style={{ color: 'var(--cc-foreground)' }}>{activeFile.name}</span>
                     </div>
 
                     {/* Monaco Editor Canvas */}
@@ -919,12 +989,16 @@ export const Layout = ({
                         onBoardChange={(board) => onBoardChange?.(board)}
                         baud={activeBaud}
                         onBaudChange={(baud) => onBaudChange?.(baud)}
+                        platformioPath={platformioPath}
+                        onPlatformioPathChange={onPlatformioPathChange}
                         workspaceRoot={workspaceRoot}
                         aiConfig={aiConfig}
                         onAIConfigChange={(config) => { setSettingsMessage(''); setAiConfig(config); }}
                         onSaveAI={() => void saveAIConfiguration()}
                         aiMessage={settingsMessage}
                         extensions={installedExtensions}
+                        extensionOutput={extensionOutput}
+                        onRunExtensionCommand={runExtensionCommand}
                       /> : children}
                     </div>
                   </div>
@@ -935,8 +1009,8 @@ export const Layout = ({
                     <div
                       style={{
                         height: '100%',
-                        backgroundColor: '#1e1e1e',
-                        borderTop: '1px solid #3c3c3c',
+                        backgroundColor: 'var(--cc-surface)',
+                        borderTop: '1px solid var(--cc-border)',
                         display: 'flex',
                         flexDirection: 'column',
                         overflow: 'hidden'
@@ -946,8 +1020,8 @@ export const Layout = ({
                       <div
                         style={{
                           height: '30px',
-                          backgroundColor: '#252526',
-                          borderBottom: '1px solid #3c3c3c',
+                          backgroundColor: 'var(--cc-sidebar)',
+                          borderBottom: '1px solid var(--cc-border)',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
@@ -962,7 +1036,7 @@ export const Layout = ({
                               background: 'transparent',
                               border: 'none',
                               borderBottom: bottomTab === 'terminal' ? '2px solid #007acc' : '2px solid transparent',
-                              color: bottomTab === 'terminal' ? '#ffffff' : '#888888',
+                              color: bottomTab === 'terminal' ? 'var(--cc-foreground-strong)' : 'var(--cc-muted)',
                               padding: '4px 10px',
                               fontSize: '11px',
                               fontWeight: 600,
@@ -975,7 +1049,7 @@ export const Layout = ({
                           </button>
                           <button
                             onClick={() => setBottomTab('plotter')}
-                            style={{ background: 'transparent', border: 'none', borderBottom: bottomTab === 'plotter' ? '2px solid #007acc' : '2px solid transparent', color: bottomTab === 'plotter' ? '#fff' : '#888', padding: '4px 10px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.5px' }}
+                            style={{ background: 'transparent', border: 'none', borderBottom: bottomTab === 'plotter' ? '2px solid #007acc' : '2px solid transparent', color: bottomTab === 'plotter' ? 'var(--cc-foreground-strong)' : 'var(--cc-muted)', padding: '4px 10px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.5px' }}
                           >
                             Serial Plotter
                           </button>
@@ -985,7 +1059,7 @@ export const Layout = ({
                               background: 'transparent',
                               border: 'none',
                               borderBottom: bottomTab === 'build' ? '2px solid #007acc' : '2px solid transparent',
-                              color: bottomTab === 'build' ? '#ffffff' : '#888888',
+                              color: bottomTab === 'build' ? 'var(--cc-foreground-strong)' : 'var(--cc-muted)',
                               padding: '4px 10px',
                               fontSize: '11px',
                               fontWeight: 600,
@@ -1003,7 +1077,7 @@ export const Layout = ({
                           <button
                             onClick={() => setBottomOpen(false)}
                             title="Close Panel"
-                            style={{ background: 'transparent', border: 'none', color: '#888888', cursor: 'pointer', padding: 4 }}
+                            style={{ background: 'transparent', border: 'none', color: 'var(--cc-muted)', cursor: 'pointer', padding: 4 }}
                           >
                             <X size={14} />
                           </button>
@@ -1019,8 +1093,8 @@ export const Layout = ({
                             style={{
                               height: '100%',
                               padding: '8px 12px',
-                              backgroundColor: '#181818',
-                              color: '#d4d4d4',
+                              backgroundColor: 'var(--cc-root)',
+                              color: 'var(--cc-foreground)',
                               fontFamily: 'Consolas, monospace',
                               fontSize: '12px',
                               overflowY: 'auto',
@@ -1045,7 +1119,7 @@ export const Layout = ({
         style={{
           height: '22px',
           backgroundColor: '#007acc',
-          color: '#ffffff',
+          color: 'var(--cc-foreground-strong)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -1118,7 +1192,7 @@ const ActivityBarButton: React.FC<{
       background: 'transparent',
       border: 'none',
       borderLeft: active ? '2px solid #007acc' : '2px solid transparent',
-      color: active ? '#ffffff' : '#858585',
+      color: active ? 'var(--cc-foreground-strong)' : 'var(--cc-muted)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -1127,10 +1201,10 @@ const ActivityBarButton: React.FC<{
       transition: 'color 0.15s ease'
     }}
     onMouseEnter={(e) => {
-      if (!active) (e.currentTarget as HTMLButtonElement).style.color = '#cccccc';
+      if (!active) (e.currentTarget as HTMLButtonElement).style.color = 'var(--cc-foreground)';
     }}
     onMouseLeave={(e) => {
-      if (!active) (e.currentTarget as HTMLButtonElement).style.color = '#858585';
+      if (!active) (e.currentTarget as HTMLButtonElement).style.color = 'var(--cc-muted)';
     }}
   >
     {icon}
@@ -1138,16 +1212,16 @@ const ActivityBarButton: React.FC<{
 );
 
 const ExtensionCard: React.FC<{ name: string; ver: string; arch: string }> = ({ name, ver, arch }) => (
-  <div style={{ padding: '6px 8px', background: '#1e1e1e', border: '1px solid #3c3c3c' }}>
-    <div style={{ fontWeight: 600, color: '#fff' }}>{name}</div>
-    <div style={{ color: '#888', fontSize: '11px' }}>{arch} • {ver} • Active</div>
+  <div style={{ padding: '6px 8px', background: 'var(--cc-surface)', border: '1px solid var(--cc-border)' }}>
+    <div style={{ fontWeight: 600, color: 'var(--cc-foreground-strong)' }}>{name}</div>
+    <div style={{ color: 'var(--cc-muted)', fontSize: '11px' }}>{arch} • {ver} • Active</div>
   </div>
 );
 
 const iconBtnStyle: React.CSSProperties = {
-  background: '#2d2d2d',
-  border: '1px solid #3c3c3c',
-  color: '#cccccc',
+  background: 'var(--cc-tab)',
+  border: '1px solid var(--cc-border)',
+  color: 'var(--cc-foreground)',
   padding: '3px 8px',
   cursor: 'pointer',
   display: 'flex',
@@ -1157,7 +1231,7 @@ const iconBtnStyle: React.CSSProperties = {
 
 const sidebarBtnStyle: React.CSSProperties = {
   flex: 1,
-  color: '#ffffff',
+  color: 'var(--cc-foreground-strong)',
   border: 'none',
   padding: '6px 10px',
   cursor: 'pointer',
@@ -1170,20 +1244,20 @@ const debugInputStyle: React.CSSProperties = {
   minWidth: 0,
   width: '100%',
   boxSizing: 'border-box',
-  background: '#1e1e1e',
-  color: '#d4d4d4',
+  background: 'var(--cc-surface)',
+  color: 'var(--cc-foreground)',
   border: '1px solid #555',
   padding: '6px 7px',
   fontSize: 12,
 };
 
-const sectionTitleStyle: React.CSSProperties = { color: '#888', fontSize: 10, fontWeight: 700, letterSpacing: '0.5px', marginBottom: 5 };
-const debugPaneStyle: React.CSSProperties = { margin: 0, padding: 6, maxHeight: 100, overflow: 'auto', background: '#1e1e1e', color: '#ccc', whiteSpace: 'pre-wrap', fontSize: 11 };
-const aiQuickButtonStyle: React.CSSProperties = { textAlign: 'left', background: '#2d2d2d', color: '#ddd', border: '1px solid #3c3c3c', padding: '7px 8px', cursor: 'pointer', fontSize: 11 };
-const settingsNavButtonStyle: React.CSSProperties = { textAlign: 'left', background: 'transparent', color: '#d4d4d4', border: 'none', padding: '7px 9px', cursor: 'pointer', fontSize: 12 };
+const sectionTitleStyle: React.CSSProperties = { color: 'var(--cc-muted)', fontSize: 10, fontWeight: 700, letterSpacing: '0.5px', marginBottom: 5 };
+const debugPaneStyle: React.CSSProperties = { margin: 0, padding: 6, maxHeight: 100, overflow: 'auto', background: 'var(--cc-surface)', color: 'var(--cc-foreground)', whiteSpace: 'pre-wrap', fontSize: 11 };
+const aiQuickButtonStyle: React.CSSProperties = { textAlign: 'left', background: 'var(--cc-tab)', color: '#ddd', border: '1px solid var(--cc-border)', padding: '7px 8px', cursor: 'pointer', fontSize: 11 };
+const settingsNavButtonStyle: React.CSSProperties = { textAlign: 'left', background: 'transparent', color: 'var(--cc-foreground)', border: 'none', padding: '7px 9px', cursor: 'pointer', fontSize: 12 };
 
 interface SettingsPageProps {
-  section: 'general' | 'appearance' | 'hardware' | 'ai' | 'extensions';
+  section: 'general' | 'appearance' | 'hardware' | 'ai' | 'extensions' | 'shortcuts';
   onSectionChange: (section: SettingsPageProps['section']) => void;
   theme: Theme;
   onThemeChange: (theme: Theme) => void;
@@ -1191,56 +1265,61 @@ interface SettingsPageProps {
   onBoardChange: (board: string) => void;
   baud: number;
   onBaudChange: (baud: number) => void;
+  platformioPath: string;
+  onPlatformioPathChange?: (path: string) => void;
   workspaceRoot: string | null;
   aiConfig: { provider: 'openai' | 'gemini' | 'anthropic' | 'ollama'; apiKey: string; hasApiKey: boolean; model: string; endpoint: string };
   onAIConfigChange: (config: SettingsPageProps['aiConfig']) => void;
   onSaveAI: () => void;
   aiMessage: string;
-  extensions: Array<{ id: string; path: string; boards: Array<{ id: string; name: string }> }>;
+  extensions: Array<{ id: string; path: string; boards: Array<{ id: string; name: string }>; themes?: Array<{ id: string; name: string }>; commands?: Array<{ id: string; title: string; description: string }> }>;
+  extensionOutput: string;
+  onRunExtensionCommand: (id: string) => void;
 }
 
 const SettingsPage: React.FC<SettingsPageProps> = (props) => {
-  const { section, onSectionChange, theme, onThemeChange, board, onBoardChange, baud, onBaudChange, workspaceRoot, aiConfig, onAIConfigChange, onSaveAI, aiMessage, extensions } = props;
+  const { section, onSectionChange, theme, onThemeChange, board, onBoardChange, baud, onBaudChange, platformioPath, onPlatformioPathChange, workspaceRoot, aiConfig, onAIConfigChange, onSaveAI, aiMessage, extensions, extensionOutput, onRunExtensionCommand } = props;
   const sections: Array<{ id: SettingsPageProps['section']; title: string }> = [
     { id: 'general', title: 'General' }, { id: 'appearance', title: 'Appearance' },
-    { id: 'hardware', title: 'Hardware' }, { id: 'ai', title: 'AI Assistant' }, { id: 'extensions', title: 'Extensions' },
+    { id: 'hardware', title: 'Hardware' }, { id: 'ai', title: 'AI Assistant' }, { id: 'extensions', title: 'Extensions' }, { id: 'shortcuts', title: 'Keyboard Shortcuts' },
   ];
-  const inputStyle: React.CSSProperties = { width: '100%', maxWidth: 520, boxSizing: 'border-box', background: '#3c3c3c', color: '#ddd', border: '1px solid #555', padding: '7px 9px', fontSize: 13 };
+  const inputStyle: React.CSSProperties = { width: '100%', maxWidth: 520, boxSizing: 'border-box', background: 'var(--cc-border)', color: '#ddd', border: '1px solid #555', padding: '7px 9px', fontSize: 13 };
   const fieldStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 560, margin: '18px 0' };
   const heading = sections.find((item) => item.id === section)?.title || 'General';
-  return <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#1e1e1e', color: '#d4d4d4', overflow: 'hidden' }}>
-    <header style={{ padding: '18px 24px 12px', borderBottom: '1px solid #333', flexShrink: 0 }}>
+  return <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--cc-surface)', color: 'var(--cc-foreground)', overflow: 'hidden' }}>
+    <header style={{ padding: '18px 24px 12px', borderBottom: '1px solid var(--cc-control)', flexShrink: 0 }}>
       <div style={{ fontSize: 19, fontWeight: 500 }}>Settings</div>
-      <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>Preferences for your workspace and hardware toolchain</div>
+      <div style={{ fontSize: 11, color: 'var(--cc-muted)', marginTop: 4 }}>Preferences for your workspace and hardware toolchain</div>
     </header>
     <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-      <nav aria-label="Settings categories" style={{ width: 190, flexShrink: 0, padding: 12, borderRight: '1px solid #333', overflowY: 'auto' }}>
-        {sections.map((item) => <button key={item.id} onClick={() => onSectionChange(item.id)} style={{ ...settingsNavButtonStyle, width: '100%', background: section === item.id ? '#37373d' : 'transparent', borderLeft: section === item.id ? '2px solid #007acc' : '2px solid transparent' }}>{item.title}</button>)}
+      <nav aria-label="Settings categories" style={{ width: 190, flexShrink: 0, padding: 12, borderRight: '1px solid var(--cc-control)', overflowY: 'auto' }}>
+        {sections.map((item) => <button key={item.id} onClick={() => onSectionChange(item.id)} style={{ ...settingsNavButtonStyle, width: '100%', background: section === item.id ? 'var(--cc-selected)' : 'transparent', borderLeft: section === item.id ? '2px solid #007acc' : '2px solid transparent' }}>{item.title}</button>)}
       </nav>
       <main style={{ flex: 1, minWidth: 0, padding: '20px 28px', overflow: 'auto' }}>
         <h2 style={{ fontSize: 17, fontWeight: 500, margin: '0 0 16px' }}>{heading}</h2>
         {section === 'general' && <>
           <div style={sectionTitleStyle}>WORKSPACE</div>
           <label style={fieldStyle}>Current folder<input readOnly value={workspaceRoot || 'No folder opened'} style={inputStyle} /></label>
-          <div style={{ color: '#999', fontSize: 12, maxWidth: 560 }}>Use File → Open Folder to load a local firmware project. Files open in the editor and can be saved with Ctrl+S / Cmd+S.</div>
+          <div style={{ color: 'var(--cc-muted)', fontSize: 12, maxWidth: 560 }}>Use File → Open Folder to load a local firmware project. Files open in the editor and can be saved with Ctrl+S / Cmd+S.</div>
           <div style={{ ...sectionTitleStyle, marginTop: 28 }}>DEFAULT TARGET</div>
           <label style={fieldStyle}>Board<select value={board} onChange={(event) => onBoardChange(event.target.value)} style={inputStyle}><option>ESP32 Dev Module</option><option>Arduino Uno</option><option>Arduino Nano</option><option>Raspberry Pi Pico</option></select></label>
         </>}
         {section === 'appearance' && <>
           <div style={sectionTitleStyle}>COLOR THEME</div>
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            {(['vs-dark', 'vs', 'hc-black'] as const).map((value) => <button key={value} onClick={() => onThemeChange(value)} style={{ ...iconBtnStyle, background: theme === value ? '#0e639c' : '#333', padding: '8px 14px' }}>{value === 'vs-dark' ? 'Dark' : value === 'vs' ? 'Light' : 'High Contrast'}</button>)}
+            {(['vs-dark', 'vs', 'hc-black', 'cavallo-ocean', 'cavallo-forest'] as const).map((value) => <button key={value} onClick={() => onThemeChange(value)} style={{ ...iconBtnStyle, background: theme === value ? '#0e639c' : 'var(--cc-control)', padding: '8px 14px' }}>{({ 'vs-dark': 'Dark', vs: 'Light', 'hc-black': 'High Contrast', 'cavallo-ocean': 'Ocean', 'cavallo-forest': 'Forest' })[value]}</button>)}
           </div>
-          <p style={{ color: '#999', fontSize: 12 }}>Editor and workbench theme.</p>
+          <p style={{ color: 'var(--cc-muted)', fontSize: 12 }}>Editor and workbench theme.</p>
         </>}
         {section === 'hardware' && <>
           <div style={sectionTitleStyle}>DEFAULT SERIAL SETTINGS</div>
           <label style={fieldStyle}>Target board<select value={board} onChange={(event) => onBoardChange(event.target.value)} style={inputStyle}><option>ESP32 Dev Module</option><option>Arduino Uno</option><option>Arduino Nano</option><option>Raspberry Pi Pico</option></select></label>
           <label style={fieldStyle}>Monitor baud rate<select value={baud} onChange={(event) => onBaudChange(Number(event.target.value))} style={inputStyle}>{[9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600].map((rate) => <option key={rate} value={rate}>{rate}</option>)}</select></label>
-          <div style={{ color: '#999', fontSize: 12, maxWidth: 560 }}>Choose a detected serial port in Hardware Manager or Serial Monitor. Compile and Upload actions use the selected board and port.</div>
+          {!/pico|rp2040/i.test(board) && <label style={fieldStyle}>PlatformIO executable path<input value={platformioPath} onChange={(event) => onPlatformioPathChange?.(event.target.value)} placeholder="platformio (PATH) or full executable path" style={inputStyle} /><span style={{ color: 'var(--cc-muted)', fontSize: 12 }}>Install PlatformIO Core and leave this blank to use PATH, or enter the full path to its CLI executable.</span></label>}
+          <div style={{ color: 'var(--cc-muted)', fontSize: 12, maxWidth: 560 }}>Choose a detected serial port in Hardware Manager or Serial Monitor. Compile and Upload actions use the selected board and port.</div>
         </>}
         {section === 'ai' && <>
-          <div style={{ maxWidth: 560, padding: 10, background: '#252526', borderLeft: '3px solid #007acc', fontSize: 12, lineHeight: 1.5 }}>AI Assistant does not include a hosted AI account or API key. Enter your own provider key below, or use a local Ollama server.</div>
+          <div style={{ maxWidth: 560, padding: 10, background: 'var(--cc-sidebar)', borderLeft: '3px solid #007acc', fontSize: 12, lineHeight: 1.5 }}>AI Assistant does not include a hosted AI account or API key. Enter your own provider key below, or use a local Ollama server.</div>
           <label style={fieldStyle}>Provider<select value={aiConfig.provider} onChange={(event) => onAIConfigChange({ ...aiConfig, provider: event.target.value as typeof aiConfig.provider, apiKey: '', hasApiKey: false })} style={inputStyle}><option value="openai">OpenAI</option><option value="gemini">Google Gemini</option><option value="anthropic">Anthropic</option><option value="ollama">Local Ollama</option></select></label>
           <label style={fieldStyle}>Model<input value={aiConfig.model} onChange={(event) => onAIConfigChange({ ...aiConfig, model: event.target.value })} placeholder={aiConfig.provider === 'ollama' ? 'llama3.2' : 'Provider model ID'} style={inputStyle} /></label>
           {aiConfig.provider === 'ollama' ? <label style={fieldStyle}>Ollama endpoint<input value={aiConfig.endpoint} onChange={(event) => onAIConfigChange({ ...aiConfig, endpoint: event.target.value })} placeholder="http://localhost:11434" style={inputStyle} /></label> : <label style={fieldStyle}>Your API key<input type="password" value={aiConfig.apiKey} onChange={(event) => onAIConfigChange({ ...aiConfig, apiKey: event.target.value })} placeholder={aiConfig.hasApiKey ? 'Key saved securely; enter to replace' : 'Paste your own API key'} style={inputStyle} /></label>}
@@ -1252,10 +1331,22 @@ const SettingsPage: React.FC<SettingsPageProps> = (props) => {
           <div style={sectionTitleStyle}>LOADED EXTENSIONS</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12, maxWidth: 640 }}>
             {extensions.map((extension) => <ExtensionCard key={extension.id} name={extension.id} ver="Loaded" arch={extension.boards.map((item) => item.name).join(', ') || extension.path} />)}
-            {!extensions.length && <div style={{ color: '#999', fontSize: 12 }}>No extensions are loaded.</div>}
+            {!extensions.length && <div style={{ color: 'var(--cc-muted)', fontSize: 12 }}>No extensions are loaded.</div>}
           </div>
-          <p style={{ color: '#999', fontSize: 12, maxWidth: 640 }}>Built-in hardware extensions are activated when CavalloCode starts and contribute board/toolchain support.</p>
+          <p style={{ color: 'var(--cc-muted)', fontSize: 12, maxWidth: 640 }}>Built-in hardware extensions are activated when CavalloCode starts and contribute board/toolchain support.</p>
+          <div style={{ ...sectionTitleStyle, marginTop: 24 }}>BUILT-IN EXTENSION COMMANDS</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 640, marginTop: 12 }}>
+            {extensions.flatMap((extension) => extension.commands || []).map((command) => <button key={command.id} onClick={() => onRunExtensionCommand(command.id)} title={command.description} style={{ ...iconBtnStyle, textAlign: 'left', padding: 10 }}>{command.title}</button>)}
+          </div>
+          {extensionOutput && <pre role="status" style={{ whiteSpace: 'pre-wrap', maxWidth: 640, background: 'var(--cc-sidebar)', padding: 12, color: 'var(--cc-foreground)', fontSize: 12 }}>{extensionOutput}</pre>}
+          <div style={{ ...sectionTitleStyle, marginTop: 24 }}>BUILT-IN THEMES</div>
+          <p style={{ color: 'var(--cc-muted)', fontSize: 12 }}>Cavallo Ocean and Cavallo Forest are theme extensions. Select them from Settings → Appearance.</p>
+          <div style={{ ...sectionTitleStyle, marginTop: 28 }}>EXTENSION DEVELOPMENT</div>
+          <p style={{ color: 'var(--cc-foreground)', fontSize: 13, lineHeight: 1.6, maxWidth: 700 }}>Extensions are TypeScript packages that export a default <code>CavalloPlugin</code>. Implement <code>activate(context)</code> and <code>deactivate()</code>; add disposables to <code>context.subscriptions</code> so resources are released on unload. Board extensions can implement <code>registerBoard()</code> with an id, display name, vendor, architecture, and default baud rate. Upload integrations may implement <code>uploadHandler(port, file)</code>.</p>
+          <pre style={{ maxWidth: 700, padding: 12, background: 'var(--cc-sidebar)', color: 'var(--cc-foreground)', overflow: 'auto', fontSize: 12 }}>{`import type { CavalloPlugin } from 'plugin-api';\n\nconst extension: CavalloPlugin = {\n  activate(context) { console.info('Extension ready', context.extensionPath); },\n  deactivate() {},\n  registerBoard() { return [{ id: 'my-board', name: 'My Board', vendor: 'Example', architecture: 'esp32', defaultBaudRate: 115200 }]; }\n};\nexport default extension;`}</pre>
+          <p style={{ color: 'var(--cc-muted)', fontSize: 12, lineHeight: 1.6, maxWidth: 700 }}>Place source under <code>extensions/&lt;extension-name&gt;/src/index.ts</code>, add a package manifest and typecheck it with the workspace. Register built-ins in <code>apps/desktop/src/main/index.ts</code>; they are loaded by the extension host at startup. Always dispose timers, listeners, and processes. Extension packages run in the trusted desktop process; only install code you trust.</p>
         </>}
+        {section === 'shortcuts' && <div style={{ maxWidth: 640 }}>{[['Ctrl/Cmd + Shift + P', 'Command Palette'], ['Ctrl/Cmd + ,', 'Settings'], ['Ctrl/Cmd + S', 'Save active file'], ['Ctrl/Cmd + B', 'Toggle bottom panel'], ['Ctrl/Cmd + Shift + E', 'Explorer'], ['Ctrl/Cmd + Shift + X', 'Extensions'], ['Ctrl/Cmd + Shift + D', 'Debug & Run'], ['Ctrl/Cmd + Shift + M', 'Serial Monitor'], ['Ctrl/Cmd + Shift + B', 'Compile firmware'], ['Ctrl/Cmd + Shift + U', 'Upload firmware'], ['F5', 'Continue debugging']].map(([keys, action]) => <div key={action} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 4px', borderBottom: '1px solid var(--cc-border)', fontSize: 13 }}><span>{action}</span><code>{keys}</code></div>)}</div>}
       </main>
     </div>
   </div>;
@@ -1275,7 +1366,7 @@ class PanelErrorBoundary extends React.Component<PanelErrorBoundaryProps, PanelE
   static getDerivedStateFromError(error: Error): PanelErrorBoundaryState { return { error: error.message }; }
   componentDidCatch(error: Error) { console.error(`[${this.panelTitle}] panel failed to render`, error); }
   render() {
-    if (this.state.error) return <div role="alert" style={{ padding: 16, color: '#f48771', background: '#1e1e1e', fontSize: 12 }}>Could not render {this.panelTitle}: {this.state.error}</div>;
+    if (this.state.error) return <div role="alert" style={{ padding: 16, color: '#f48771', background: 'var(--cc-surface)', fontSize: 12 }}>Could not render {this.panelTitle}: {this.state.error}</div>;
     return this.panelContent;
   }
 }
@@ -1286,7 +1377,7 @@ function winControlBtnStyle(): React.CSSProperties {
     height: '30px',
     background: 'transparent',
     border: 'none',
-    color: '#cccccc',
+    color: 'var(--cc-foreground)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',

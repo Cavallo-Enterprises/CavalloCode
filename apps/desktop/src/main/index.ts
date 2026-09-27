@@ -13,6 +13,10 @@ import { ExtensionHostManager } from '../../../../packages/extension-host/src/ho
 import esp32Plugin from '../../../../extensions/builtin-esp32/src/index'
 import arduinoPlugin from '../../../../extensions/builtin-arduino/src/index'
 import picoPlugin from '../../../../extensions/builtin-raspberrypi/src/index'
+import oceanThemePlugin from '../../../../extensions/builtin-ocean-theme/src/index'
+import forestThemePlugin from '../../../../extensions/builtin-forest-theme/src/index'
+import pinReferencePlugin from '../../../../extensions/builtin-pin-reference/src/index'
+import firmwareChecklistPlugin from '../../../../extensions/builtin-firmware-check/src/index'
 
 const extensionHost = new ExtensionHostManager()
 
@@ -95,6 +99,10 @@ app.whenReady().then(async () => {
     extensionHost.registerPlugin('builtin-esp32', esp32Plugin, 'builtin:esp32'),
     extensionHost.registerPlugin('builtin-arduino', arduinoPlugin, 'builtin:arduino'),
     extensionHost.registerPlugin('builtin-raspberrypi', picoPlugin, 'builtin:raspberrypi'),
+    extensionHost.registerPlugin('builtin-ocean-theme', oceanThemePlugin, 'builtin:theme:ocean'),
+    extensionHost.registerPlugin('builtin-forest-theme', forestThemePlugin, 'builtin:theme:forest'),
+    extensionHost.registerPlugin('builtin-pin-reference', pinReferencePlugin, 'builtin:pin-reference'),
+    extensionHost.registerPlugin('builtin-firmware-check', firmwareChecklistPlugin, 'builtin:firmware-check'),
   ])
 
   app.on('browser-window-created', (_, window) => {
@@ -159,6 +167,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('ai:ask', (_event, prompt: string, context) => askAI(prompt, context))
 
   ipcMain.handle('ext:list', () => extensionHost.listPlugins())
+  ipcMain.handle('ext:execute-command', (_event, commandId: string) => extensionHost.executeCommand(commandId))
 
   // Window controls IPC
   ipcMain.on('window:minimize', (event) => {
@@ -186,7 +195,14 @@ app.whenReady().then(async () => {
     return win?.isMaximized() ?? false;
   });
 
-  ipcMain.handle('hardware:compile', async (_event, projectPath: string, board?: string) => compileProject(projectPath, board))
+  ipcMain.handle('window:new', () => { createWindow(); })
+  ipcMain.handle('shell:open-external', (_event, url: string) => {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'https:') throw new Error('Only HTTPS links can be opened externally.')
+    return shell.openExternal(parsed.toString())
+  })
+
+  ipcMain.handle('hardware:compile', async (_event, projectPath: string, board?: string, platformioPath?: string) => compileProject(projectPath, board, platformioPath))
   ipcMain.handle('hardware:flash', async (_event, board: string, port: string, artifactPath: string) => flashHardware(board, port, artifactPath))
   ipcMain.handle('hardware:flash-esp32', async (_event, port: string, binPath: string) => flashESP32(port, binPath))
   ipcMain.handle('hardware:flash-arduino', async (_event, board: 'uno' | 'nano', port: string, hexPath: string) => flashArduino(board, port, hexPath))
