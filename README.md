@@ -371,30 +371,30 @@ The roadmap is focused on establishing the underlying IDE architecture before ex
 * [x] Hardware device management
 * [x] Serial device discovery (IPC `serial:list`)
 * [x] Integrated serial monitor (baud rates 9600 to 1152000)
-* [ ] Firmware upload (esptool/avrdude integration)
-* [ ] Toolchain management (PlatformIO)
+* [x]  Firmware upload (esptool/avrdude integration)
+* [x] Toolchain management (PlatformIO)
 
-* [ ] Hardware diagnostics
-* [ ] Arduino integration
-* [ ] ESP32 integration
+* [x] Hardware diagnostics
+* [x] Arduino integration
+* [x] ESP32 integration
 
 ### Embedded Development
 
-* [ ] Build configuration
-* [ ] Cross-compilation workflows
-* [ ] Debug adapter integration
-* [ ] Breakpoints
-* [ ] Watch variables
-* [ ] Debug console
-* [ ] Embedded debugging
+* [x] Build configuration
+* [x] Cross-compilation workflows
+* [x] Debug adapter integration
+* [x] Breakpoints
+* [x] Watch variables
+* [x] Debug console
+* [x] Embedded debugging
 
 ### Ecosystem
 
-* [ ] Extension registry
-* [ ] Hardware platform packages
-* [ ] Toolchain packages
-* [ ] Project templates
-* [ ] Documentation system
+* [x] Extension registry
+* [x] Hardware platform packages
+* [x] Toolchain packages
+* [x] Project templates
+* [x] Documentation system
 
 The roadmap is subject to change as the architecture develops.
 
