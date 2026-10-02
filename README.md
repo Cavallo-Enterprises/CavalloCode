@@ -4,15 +4,15 @@
 
 # CavalloCode
 
-CavalloCode is an open-source, modular integrated development environment for hardware, electronics, and embedded systems.
+**Write firmware, build locally, and monitor your board from one desktop workbench.**
 
-The project is designed around a VS Code-inspired architecture, with a desktop application, shared packages, and extensions separated into a PNPM workspace. The goal is to provide a general-purpose development environment that can be extended for different hardware platforms, toolchains, languages, and device workflows.
+CavalloCode is an open-source IDE for embedded development. Edit code in a VS Code-inspired workspace, build ESP32 and Arduino projects with your local PlatformIO installation, and inspect serial output in the integrated monitor and plotter.
 
-## Status
+It is an early-stage project for makers and embedded developers who want their editor and serial tools together, with an extension-based foundation for adding hardware support.
 
-CavalloCode is currently under active development.
+**Get started:** [run CavalloCode from source](#quickstart--development) · [see current capabilities and roadmap](#roadmap)
 
-The architecture and core application are being developed before expanding platform-specific tooling and hardware integrations. APIs, package boundaries, extension interfaces, and internal implementation details may change during development.
+> **Development status:** CavalloCode is actively evolving; platform support and extension APIs may change. Firmware builds require you to install PlatformIO Core separately—CavalloCode does not bundle the toolchain. See the [roadmap](#roadmap) for features that are still planned.
 
 ## Desktop setup and hardware toolchains
 
@@ -20,16 +20,15 @@ Serial Monitor, Serial Plotter, and Build Console run inside the desktop app. Fi
 
 The extension authoring guide is [docs/EXTENSION_DEVELOPMENT.md](docs/EXTENSION_DEVELOPMENT.md).
 
-## Overview & Key Features
+## What you can do
 
-CavalloCode brings VS Code-grade architecture and ergonomics to Embedded Systems and Hardware Engineering:
+The desktop app brings the everyday edit-and-inspect loop for embedded projects into one place:
 
-- **Extension Host**: Electron Main Process manages built-in extension activation and disposal; the renderer accesses extension metadata and commands through IPC.
-- **Embedded Monaco Editor**: Full syntax highlighting and code editing for C++, C, Python, and MicroPython, bundled 100% locally with zero CDN dependencies and fault-tolerant ErrorBoundary recovery.
-- **Serial Terminal and Plotter**: Serial monitor built on `xterm.js` with dynamic baud selection, auto-scroll, port enumeration, and a rolling numeric plotter.
-- **Modern VS Code UI Shell**: Collapsible file tree explorer, application menubar, hardware status bar (active board, serial port, baud rate), and interactive resizable editor/terminal splits.
-- **Modular Extension System**: Built-in architecture packs for ESP32, Arduino AVR, and Raspberry Pi Pico (RP2040).
-- **Production-Ready Windows Packaging**: One-click NSIS desktop installer and portable `.exe` generation via `electron-builder`.
+- **Edit in a familiar workspace**: Monaco-based editor, file explorer, command palette, keyboard shortcuts, and resizable editor and terminal panels.
+- **Build with your own toolchain**: PlatformIO CLI integration for ESP32 and Arduino builds. Install PlatformIO Core separately and configure its executable in Hardware settings if it is not on `PATH`.
+- **See live device output**: Connect to serial ports, choose a baud rate, and use the integrated monitor or numeric plotter.
+- **Start with built-in board definitions**: ESP32, Arduino AVR, and Raspberry Pi Pico (RP2040) extensions are included.
+- **Extend the IDE**: A plugin API keeps board- and platform-specific contributions separate from the core application.
 
 ---
 
@@ -426,5 +425,4 @@ Platform-specific functionality should generally remain isolated from the core a
 CavalloCode is released under the MIT License.
 
 See [LICENSE](LICENSE) for the complete license text.
-
 
